@@ -2,7 +2,7 @@
   "Name": "Better Auto-Grabber",
   "Author": "kacper",
   "Version": "1.0.0",
-  "Description": "Improvements to the auto-grabber.",
+  "Description": "Per-grabber control over what each auto-grabber collects and where it reaches.",
   "UniqueID": "kacper.BetterAutoGrabber",
   "EntryDll": "BetterAutoGrabber.dll",
   "MinimumApiVersion": "4.0.0",
