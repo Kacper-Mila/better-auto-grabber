@@ -232,25 +232,16 @@ internal sealed class ModEntry : Mod
         if (!Context.IsWorldReady || !Context.IsMainPlayer)
             return;
 
-        HashSet<string> claimed = new();
-
         foreach ((GameLocation home, Object grabber) in ModEntry.FindGrabbers())
         {
             GrabberSettings settings = GrabberSettings.Load(grabber);
             if (!settings.HasExtraTargets || !this.IsDue(settings, trigger))
                 continue;
 
-            List<GameLocation> reachable = settings.ResolveLocations(grabber, this.Config).ToList();
-
-            // a location is swept once per pass, so two global grabbers don't both strip it
-            List<GameLocation> locations = reachable.Where(location => claimed.Add(location.NameOrUniqueName)).ToList();
-
-            if (this.Config.VerboseLogging && locations.Count < reachable.Count)
-            {
-                string taken = string.Join(", ", reachable.Except(locations).Select(location => location.NameOrUniqueName));
-                this.Monitor.Log($"Grabber at {home.NameOrUniqueName} ({grabber.TileLocation.X}, {grabber.TileLocation.Y}) skipped {taken}: already swept by another grabber this pass.", LogLevel.Debug);
-            }
-
+            // Every grabber sweeps everywhere it reaches. Two grabbers can't collect the same item:
+            // whichever runs first removes it from the world, and the next one finds nothing there. The
+            // ordering below is what decides who gets first pick when they want the same thing.
+            List<GameLocation> locations = settings.ResolveLocations(grabber, this.Config).ToList();
             if (locations.Count == 0)
                 continue;
 
@@ -339,7 +330,7 @@ internal sealed class ModEntry : Mod
             + $" | grabs {settings.TargetIds.Count}: {targets}";
     }
 
-    /// <summary>Get every placed auto-grabber, ordered so narrower grabbers claim their location first.</summary>
+    /// <summary>Get every placed auto-grabber, ordered so narrower grabbers get first pick.</summary>
     private static IEnumerable<(GameLocation Location, Object Grabber)> FindGrabbers()
     {
         List<(GameLocation Location, Object Grabber)> found = new();
@@ -355,7 +346,7 @@ internal sealed class ModEntry : Mod
             return true;
         });
 
-        // local grabbers get first claim on their own location, then narrow selections, then global ones
+        // a grabber watching one location gets first pick of it, ahead of one sweeping half the valley
         return found.OrderBy(entry => (int)GrabberSettings.Load(entry.Grabber).Scope)
             .ThenBy(entry => entry.Location.NameOrUniqueName, StringComparer.Ordinal)
             .ThenBy(entry => entry.Grabber.TileLocation.X)
