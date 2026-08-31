@@ -6,5 +6,5 @@
   "UniqueID": "kacper.BetterAutoGrabber",
   "EntryDll": "BetterAutoGrabber.dll",
   "MinimumApiVersion": "4.0.0",
-  "UpdateKeys": []
+  "UpdateKeys": [ "GitHub:Kacper-Mila/better-auto-grabber" ]
 }
