@@ -274,12 +274,10 @@ internal sealed class HarvestEngine
             if (output.IsFull)
                 return;
 
-            if (clump is GiantCrop giant)
-            {
-                if (settings.TargetIds.Contains(TargetCatalog.GiantCropId) && this.HasToolFor(TargetCatalog.GiantCropId))
-                    this.HarvestGiantCrop(location, giant, output);
+            // giant crops are left alone: plenty of players grow them as decoration, and a grabber
+            // that quietly chopped one down would be destroying something deliberate
+            if (clump is GiantCrop)
                 continue;
-            }
 
             string targetId = TargetCatalog.ClumpId(HarvestEngine.NormalizeClumpIndex(clump.parentSheetIndex.Value));
             if (!settings.TargetIds.Contains(targetId) || !this.HasToolFor(targetId))
@@ -352,24 +350,6 @@ internal sealed class HarvestEngine
         }
     }
 
-    /// <summary>Chop a giant crop down and collect what it drops.</summary>
-    /// <remarks>Giant crop yields are data-driven, so the game's own tool logic runs and its debris is swept up afterwards.</remarks>
-    private void HarvestGiantCrop(GameLocation location, GiantCrop giant, GrabberOutput output)
-    {
-        Vector2 tile = giant.Tile;
-        this.CaptureDebris(location, output, tile, () =>
-        {
-            // the clump ignores repeat hits from the same tool swing, so each blow uses a fresh axe
-            for (int i = 0; i < 100 && location.resourceClumps.Contains(giant); i++)
-            {
-                Axe axe = new() { UpgradeLevel = 4 };
-                axe.lastUser = Game1.player;
-                if (giant.performToolAction(axe, 5, tile))
-                    location.resourceClumps.Remove(giant);
-            }
-        });
-    }
-
     /*********
     ** Dig spots
     *********/
@@ -440,7 +420,6 @@ internal sealed class HarvestEngine
 
         return targetId switch
         {
-            TargetCatalog.GiantCropId => HarvestEngine.ToolLevel("Axe") >= 0,
             TargetCatalog.ArtifactSpotId or TargetCatalog.SeedSpotId => HarvestEngine.ToolLevel("Hoe") >= 0,
             _ when targetId == TargetCatalog.ClumpId(ResourceClump.stumpIndex) => HarvestEngine.ToolLevel("Axe") >= 1,
             _ when targetId == TargetCatalog.ClumpId(ResourceClump.hollowLogIndex) => HarvestEngine.ToolLevel("Axe") >= 2,

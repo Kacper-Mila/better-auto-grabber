@@ -21,7 +21,6 @@ internal static class I18n
     public static string Target_Boulder() => I18n.Get("target.boulder");
     public static string Target_Meteorite() => I18n.Get("target.meteorite");
     public static string Target_MineBoulder() => I18n.Get("target.mine-boulder");
-    public static string Target_GiantCrop() => I18n.Get("target.giant-crop");
     public static string Target_ArtifactSpot() => I18n.Get("target.artifact-spot");
     public static string Target_SeedSpot() => I18n.Get("target.seed-spot");
 

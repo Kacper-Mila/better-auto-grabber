@@ -47,9 +47,6 @@ internal static class TargetCatalog
     /// <summary>Build the target ID for a resource clump.</summary>
     public static string ClumpId(int parentSheetIndex) => "clump:" + parentSheetIndex;
 
-    /// <summary>The target ID for giant crops, which are one row regardless of which crop grew.</summary>
-    public const string GiantCropId = "clump:giant";
-
     /// <summary>The target ID for artifact spots.</summary>
     public const string ArtifactSpotId = "dig:artifact";
 
@@ -142,7 +139,6 @@ internal static class TargetCatalog
         TargetCatalog.Add(TargetCatalog.ClumpId(ResourceClump.boulderIndex), I18n.Target_Boulder(), TargetGroup.Clumps, "(O)390");
         TargetCatalog.Add(TargetCatalog.ClumpId(ResourceClump.meteoriteIndex), I18n.Target_Meteorite(), TargetGroup.Clumps, "(O)386");
         TargetCatalog.Add(TargetCatalog.ClumpId(ResourceClump.mineRock1Index), I18n.Target_MineBoulder(), TargetGroup.Clumps, "(O)390");
-        TargetCatalog.Add(TargetCatalog.GiantCropId, I18n.Target_GiantCrop(), TargetGroup.Clumps, "(O)190");
     }
 
     /// <summary>Add a row for each spot that has to be dug up.</summary>

@@ -1,12 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using BetterAutoGrabber.Framework;
 using BetterAutoGrabber.Patches;
 using BetterAutoGrabber.UI;
 using HarmonyLib;
-using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -34,9 +32,6 @@ internal sealed class ModEntry : Mod
     /// <summary>The grabbers that filled up today, keyed the same way.</summary>
     private readonly HashSet<string> FullGrabbers = new();
 
-    /// <summary>The settings button drawn on the open grabber menu, if one is open.</summary>
-    private ClickableTextureComponent? SettingsButton;
-
     /*********
     ** Public methods
     *********/
@@ -47,15 +42,14 @@ internal sealed class ModEntry : Mod
         I18n.Init(helper.Translation);
         this.Engine = new HarvestEngine(this.Config, this.Monitor);
 
-        AutoGrabberPatches.Apply(new Harmony(this.ModManifest.UniqueID), this.Monitor);
+        AutoGrabberPatches.Apply(new Harmony(this.ModManifest.UniqueID), this.Monitor, this.Config);
 
         helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
         helper.Events.GameLoop.DayStarted += this.OnDayStarted;
         helper.Events.GameLoop.TimeChanged += this.OnTimeChanged;
         helper.Events.GameLoop.DayEnding += this.OnDayEnding;
-        helper.Events.Display.RenderedActiveMenu += this.OnRenderedActiveMenu;
-        helper.Events.Input.ButtonPressed += this.OnButtonPressed;
+        helper.Events.Display.MenuChanged += this.OnMenuChanged;
     }
 
     /*********
@@ -105,50 +99,38 @@ internal sealed class ModEntry : Mod
             Game1.addHUDMessage(new HUDMessage(I18n.Summary_Full(location), HUDMessage.error_type));
     }
 
-    /// <summary>Draw the settings button on an open grabber menu.</summary>
-    private void OnRenderedActiveMenu(object? sender, RenderedActiveMenuEventArgs e)
+    /// <summary>Restore the grabber's own menu when the game replaces it with a plain one.</summary>
+    /// <remarks>
+    ///   Putting an item into the grabber goes through <see cref="Chest.grabItemFromInventory" />, which
+    ///   reopens the chest's stock menu and would drop the settings button.
+    /// </remarks>
+    private void OnMenuChanged(object? sender, MenuChangedEventArgs e)
     {
-        if (!this.TryGetOpenGrabber(out _, out ItemGrabMenu? menu))
-        {
-            this.SettingsButton = null;
+        if (e.NewMenu is not ItemGrabMenu menu || e.NewMenu is GrabberMenu || menu.context is not Chest chest)
             return;
-        }
 
-        this.SettingsButton = new ClickableTextureComponent(
-            new Rectangle(
-                menu.xPositionOnScreen + menu.width + this.Config.SettingsButtonOffsetX,
-                menu.yPositionOnScreen + menu.height / 3 - 224 + this.Config.SettingsButtonOffsetY,
-                64,
-                64),
-            Game1.mouseCursors,
-            new Rectangle(383, 493, 11, 14),
-            4f);
+        Object? grabber = ModEntry.FindGrabberHolding(chest);
+        if (grabber == null)
+            return;
 
-        this.SettingsButton.draw(e.SpriteBatch);
+        GrabberMenu replacement = new(grabber, chest, this.Config);
 
-        if (this.SettingsButton.containsPoint(Game1.getOldMouseX(), Game1.getOldMouseY()))
-            IClickableMenu.drawHoverText(e.SpriteBatch, I18n.Menu_SettingsTooltip(), Game1.smallFont);
-
-        // the button is drawn after the menu, so the cursor has to be drawn again on top of it
-        menu.drawMouse(e.SpriteBatch);
+        // the game hands the player back anything that didn't fit as the menu's held item, so it has to
+        // survive the swap or it would be thrown away
+        replacement.heldItem = menu.heldItem;
+        Game1.activeClickableMenu = replacement;
     }
 
-    /// <summary>Open the settings page when the button is clicked.</summary>
-    private void OnButtonPressed(object? sender, ButtonPressedEventArgs e)
+    /// <summary>Find the placed grabber holding a given chest, if any.</summary>
+    private static Object? FindGrabberHolding(Chest chest)
     {
-        if (this.SettingsButton == null || (e.Button != SButton.MouseLeft && e.Button != SButton.ControllerA))
-            return;
+        foreach ((GameLocation _, Object grabber) in ModEntry.FindGrabbers())
+        {
+            if (ReferenceEquals(grabber.heldObject.Value, chest))
+                return grabber;
+        }
 
-        if (!this.TryGetOpenGrabber(out Object? grabber, out _))
-            return;
-
-        Vector2 cursor = e.Cursor.GetScaledScreenPixels();
-        if (!this.SettingsButton.containsPoint((int)cursor.X, (int)cursor.Y))
-            return;
-
-        this.Helper.Input.Suppress(e.Button);
-        Game1.playSound("smallSelect");
-        Game1.activeClickableMenu = new GrabberSettingsMenu(grabber, GrabberSettings.Load(grabber), this.Config);
+        return null;
     }
 
     /*********
@@ -246,20 +228,6 @@ internal sealed class ModEntry : Mod
     /*********
     ** Helpers
     *********/
-    /// <summary>Get the grabber whose menu is open, if any.</summary>
-    private bool TryGetOpenGrabber([NotNullWhen(true)] out Object? grabber, [NotNullWhen(true)] out ItemGrabMenu? menu)
-    {
-        grabber = null;
-        menu = null;
-
-        if (Game1.activeClickableMenu is not ItemGrabMenu found || found.context is not Object obj || obj.QualifiedItemId != AutoGrabberPatches.AutoGrabberId)
-            return false;
-
-        grabber = obj;
-        menu = found;
-        return true;
-    }
-
     /// <summary>Add the mod's settings to Generic Mod Config Menu, if it's installed.</summary>
     private void RegisterConfigMenu()
     {
