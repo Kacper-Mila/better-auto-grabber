@@ -106,7 +106,22 @@ internal sealed class ModEntry : Mod
     /// </remarks>
     private void OnMenuChanged(object? sender, MenuChangedEventArgs e)
     {
-        if (e.NewMenu is not ItemGrabMenu menu || e.NewMenu is GrabberMenu || menu.context is not Chest chest)
+        if (e.NewMenu is not ItemGrabMenu menu)
+            return;
+
+        // logged for both the grabber and ordinary chests, so the two layouts can be compared
+        if (this.Config.VerboseLogging)
+        {
+            string layout = menu is GrabberMenu grabberMenu
+                ? grabberMenu.DescribeLayout()
+                : $"menu ({menu.xPositionOnScreen},{menu.yPositionOnScreen}) {menu.width}x{menu.height}"
+                    + $" | contents ({menu.ItemsToGrabMenu.xPositionOnScreen},{menu.ItemsToGrabMenu.yPositionOnScreen}) {menu.ItemsToGrabMenu.width}x{menu.ItemsToGrabMenu.height} capacity {menu.ItemsToGrabMenu.capacity} rows {menu.ItemsToGrabMenu.rows}"
+                    + $" | backpack ({menu.inventory.xPositionOnScreen},{menu.inventory.yPositionOnScreen}) {menu.inventory.width}x{menu.inventory.height} capacity {menu.inventory.capacity} rows {menu.inventory.rows}";
+
+            this.Monitor.Log($"{menu.GetType().Name}: {layout}", LogLevel.Info);
+        }
+
+        if (menu is GrabberMenu || menu.context is not Chest chest)
             return;
 
         Object? grabber = ModEntry.FindGrabberHolding(chest);

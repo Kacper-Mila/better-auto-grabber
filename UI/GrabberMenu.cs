@@ -25,7 +25,7 @@ internal sealed class GrabberMenu : ItemGrabMenu
 
     public GrabberMenu(Object grabber, Chest chest, ModConfig config)
         : base(
-            inventory: GrabberMenu.PrepareInventory(chest),
+            inventory: chest.Items,
             reverseGrab: false,
             showReceivingMenu: true,
             highlightFunction: InventoryMenu.highlightAllItems,
@@ -47,6 +47,7 @@ internal sealed class GrabberMenu : ItemGrabMenu
         this.Config = config;
 
         this.behaviorOnItemGrab = this.OnItemGrabbed;
+        this.LayOutContents();
         this.PositionSettingsButton();
     }
 
@@ -71,7 +72,53 @@ internal sealed class GrabberMenu : ItemGrabMenu
     public override void gameWindowSizeChanged(Rectangle oldBounds, Rectangle newBounds)
     {
         base.gameWindowSizeChanged(oldBounds, newBounds);
+        this.LayOutContents();
         this.PositionSettingsButton();
+    }
+
+    /// <summary>Get the menu's geometry, for diagnosing layout problems.</summary>
+    public string DescribeLayout()
+    {
+        return $"menu ({this.xPositionOnScreen},{this.yPositionOnScreen}) {this.width}x{this.height}"
+            + $" | contents ({this.ItemsToGrabMenu.xPositionOnScreen},{this.ItemsToGrabMenu.yPositionOnScreen}) {this.ItemsToGrabMenu.width}x{this.ItemsToGrabMenu.height} capacity {this.ItemsToGrabMenu.capacity} rows {this.ItemsToGrabMenu.rows}"
+            + $" | backpack ({this.inventory.xPositionOnScreen},{this.inventory.yPositionOnScreen}) {this.inventory.width}x{this.inventory.height} capacity {this.inventory.capacity} rows {this.inventory.rows}";
+    }
+
+    /// <summary>Build the grabber's item grid and put it clear of the player's inventory.</summary>
+    /// <remarks>
+    ///   The inherited layout puts the two grids on top of each other here, so rather than trusting the
+    ///   positions that come out of the base menu, the grid is rebuilt at a stated size and anchored to
+    ///   the player's inventory, which is the one part known to land in the right place.
+    /// </remarks>
+    private void LayOutContents()
+    {
+        InventoryMenu grid = new(
+            this.xPositionOnScreen + 32,
+            this.yPositionOnScreen,
+            playerInventory: false,
+            this.GrabberChest.Items,
+            InventoryMenu.highlightAllItems,
+            this.GrabberChest.GetActualCapacity(),
+            3);
+
+        grid.SetPosition(grid.xPositionOnScreen, this.inventory.yPositionOnScreen - grid.height - 100);
+        grid.populateClickableComponentList();
+
+        // keep the ID offsets the base menu applies, so controller navigation still works
+        foreach (ClickableComponent slot in grid.inventory)
+        {
+            if (slot == null)
+                continue;
+
+            slot.myID += 53910;
+            slot.upNeighborID += 53910;
+            slot.rightNeighborID += 53910;
+            slot.downNeighborID = -7777;
+            slot.leftNeighborID += 53910;
+            slot.fullyImmutable = true;
+        }
+
+        this.ItemsToGrabMenu = grid;
     }
 
     /// <inheritdoc />
@@ -85,30 +132,6 @@ internal sealed class GrabberMenu : ItemGrabMenu
 
         // the base menu draws the cursor, so it has to be drawn again above the button
         this.drawMouse(b);
-    }
-
-    /// <summary>Give the chest its full set of slots before the menu lays itself out.</summary>
-    /// <remarks>
-    ///   An untouched grabber holds an empty list rather than 36 empty slots, because vanilla only ever
-    ///   opens a grabber that already has something in it. The menu lays out its grid from that list, so
-    ///   without this the receiving area comes out malformed. Emptying a chest by hand leaves it in this
-    ///   same padded state, so it's nothing the game doesn't already do.
-    /// </remarks>
-    private static IList<Item> PrepareInventory(Chest chest)
-    {
-        while (chest.Items.Count < chest.GetActualCapacity())
-            chest.Items.Add(null);
-
-        return chest.Items;
-    }
-
-    /// <inheritdoc />
-    protected override void cleanupBeforeExit()
-    {
-        base.cleanupBeforeExit();
-
-        // don't leave the padding behind in the save file
-        this.GrabberChest.clearNulls();
     }
 
     /// <summary>Put the settings button in the column of buttons down the menu's right edge.</summary>
