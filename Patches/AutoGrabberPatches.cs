@@ -1,9 +1,8 @@
 using System;
-using BetterAutoGrabber.Framework;
-using BetterAutoGrabber.UI;
 using HarmonyLib;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.Menus;
 using StardewValley.Objects;
 using Object = StardewValley.Object;
 
@@ -21,17 +20,44 @@ internal static class AutoGrabberPatches
     public const string AutoGrabberId = "(BC)165";
 
     private static IMonitor Monitor = null!;
-    private static ModConfig Config = null!;
 
     /// <summary>Apply the patches.</summary>
-    public static void Apply(Harmony harmony, IMonitor monitor, ModConfig config)
+    public static void Apply(Harmony harmony, IMonitor monitor)
     {
         AutoGrabberPatches.Monitor = monitor;
-        AutoGrabberPatches.Config = config;
 
         harmony.Patch(
             original: AccessTools.Method(typeof(Object), "CheckForActionOnAutoGrabber"),
             prefix: new HarmonyMethod(typeof(AutoGrabberPatches), nameof(AutoGrabberPatches.Before_CheckForActionOnAutoGrabber))
+        );
+    }
+
+    /// <summary>Open the grabber's inventory, the same menu the game would open for a chest.</summary>
+    /// <remarks>
+    ///   This deliberately builds a plain <see cref="ItemGrabMenu" /> rather than a subclass of one. A
+    ///   subclass with identical geometry drew its contents grid incorrectly on at least one mod setup,
+    ///   for reasons I never pinned down, while the stock class renders correctly there — so the settings
+    ///   button is drawn over the menu instead of being part of it.
+    /// </remarks>
+    public static void OpenMenu(Object grabber, Chest chest)
+    {
+        Game1.activeClickableMenu = new ItemGrabMenu(
+            inventory: chest.Items,
+            reverseGrab: false,
+            showReceivingMenu: true,
+            highlightFunction: InventoryMenu.highlightAllItems,
+            behaviorOnItemSelectFunction: chest.grabItemFromInventory,
+            message: null,
+            behaviorOnItemGrab: (item, farmer) => AutoGrabberPatches.GrabItem(grabber, chest, item, farmer),
+            snapToBottom: false,
+            canBeExitedWithKey: true,
+            playRightClickSound: true,
+            allowRightClick: true,
+            showOrganizeButton: true,
+            source: 1,
+            sourceItem: null,
+            whichSpecialButton: -1,
+            context: grabber
         );
     }
 
@@ -49,7 +75,7 @@ internal static class AutoGrabberPatches
             if (__instance.heldObject.Value is not Chest chest)
                 return true;
 
-            Game1.activeClickableMenu = new GrabberMenu(__instance, chest, AutoGrabberPatches.Config);
+            AutoGrabberPatches.OpenMenu(__instance, chest);
             __result = true;
             return false;
         }
@@ -58,5 +84,20 @@ internal static class AutoGrabberPatches
             AutoGrabberPatches.Monitor.Log($"Failed opening the auto-grabber menu, falling back to the vanilla one: {ex}", LogLevel.Error);
             return true;
         }
+    }
+
+    /// <summary>Take an item out of the grabber, mirroring the game's own handler.</summary>
+    /// <remarks>The vanilla equivalent is protected, so it's reimplemented here to keep the reopened menu ours.</remarks>
+    private static void GrabItem(Object grabber, Chest chest, Item item, Farmer who)
+    {
+        if (who.couldInventoryAcceptThisItem(item))
+        {
+            chest.Items.Remove(item);
+            chest.clearNulls();
+            AutoGrabberPatches.OpenMenu(grabber, chest);
+        }
+
+        if (chest.isEmpty())
+            grabber.showNextIndex.Value = false;
     }
 }

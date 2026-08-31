@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using BetterAutoGrabber.Framework;
 using BetterAutoGrabber.Patches;
 using BetterAutoGrabber.UI;
 using HarmonyLib;
+using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -32,6 +34,9 @@ internal sealed class ModEntry : Mod
     /// <summary>The grabbers that filled up today, keyed the same way.</summary>
     private readonly HashSet<string> FullGrabbers = new();
 
+    /// <summary>The settings button drawn over the open grabber menu, if one is open.</summary>
+    private ClickableTextureComponent? SettingsButton;
+
     /*********
     ** Public methods
     *********/
@@ -42,7 +47,7 @@ internal sealed class ModEntry : Mod
         I18n.Init(helper.Translation);
         this.Engine = new HarvestEngine(this.Config, this.Monitor);
 
-        AutoGrabberPatches.Apply(new Harmony(this.ModManifest.UniqueID), this.Monitor, this.Config);
+        AutoGrabberPatches.Apply(new Harmony(this.ModManifest.UniqueID), this.Monitor);
 
         helper.Events.GameLoop.GameLaunched += this.OnGameLaunched;
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
@@ -50,6 +55,8 @@ internal sealed class ModEntry : Mod
         helper.Events.GameLoop.TimeChanged += this.OnTimeChanged;
         helper.Events.GameLoop.DayEnding += this.OnDayEnding;
         helper.Events.Display.MenuChanged += this.OnMenuChanged;
+        helper.Events.Display.RenderedActiveMenu += this.OnRenderedActiveMenu;
+        helper.Events.Input.ButtonPressed += this.OnButtonPressed;
     }
 
     /*********
@@ -99,41 +106,98 @@ internal sealed class ModEntry : Mod
             Game1.addHUDMessage(new HUDMessage(I18n.Summary_Full(location), HUDMessage.error_type));
     }
 
-    /// <summary>Restore the grabber's own menu when the game replaces it with a plain one.</summary>
+    /// <summary>Reopen the grabber's own menu when the game replaces it with a stock chest one.</summary>
     /// <remarks>
     ///   Putting an item into the grabber goes through <see cref="Chest.grabItemFromInventory" />, which
-    ///   reopens the chest's stock menu and would drop the settings button.
+    ///   reopens the menu with the chest as its context. Ours is identical except that the grabber is the
+    ///   context, which is what marks it as a grabber menu for the settings button.
     /// </remarks>
     private void OnMenuChanged(object? sender, MenuChangedEventArgs e)
     {
-        if (e.NewMenu is not ItemGrabMenu menu)
-            return;
-
-        // logged for both the grabber and ordinary chests, so the two layouts can be compared
-        if (this.Config.VerboseLogging)
-        {
-            string layout = menu is GrabberMenu grabberMenu
-                ? grabberMenu.DescribeLayout()
-                : $"menu ({menu.xPositionOnScreen},{menu.yPositionOnScreen}) {menu.width}x{menu.height}"
-                    + $" | contents ({menu.ItemsToGrabMenu.xPositionOnScreen},{menu.ItemsToGrabMenu.yPositionOnScreen}) {menu.ItemsToGrabMenu.width}x{menu.ItemsToGrabMenu.height} capacity {menu.ItemsToGrabMenu.capacity} rows {menu.ItemsToGrabMenu.rows}"
-                    + $" | backpack ({menu.inventory.xPositionOnScreen},{menu.inventory.yPositionOnScreen}) {menu.inventory.width}x{menu.inventory.height} capacity {menu.inventory.capacity} rows {menu.inventory.rows}";
-
-            this.Monitor.Log($"{menu.GetType().Name}: {layout}", LogLevel.Info);
-        }
-
-        if (menu is GrabberMenu || menu.context is not Chest chest)
+        if (e.NewMenu is not ItemGrabMenu menu || menu.context is not Chest chest)
             return;
 
         Object? grabber = ModEntry.FindGrabberHolding(chest);
         if (grabber == null)
             return;
 
-        GrabberMenu replacement = new(grabber, chest, this.Config);
+        Item? held = menu.heldItem;
+        AutoGrabberPatches.OpenMenu(grabber, chest);
 
         // the game hands the player back anything that didn't fit as the menu's held item, so it has to
         // survive the swap or it would be thrown away
-        replacement.heldItem = menu.heldItem;
-        Game1.activeClickableMenu = replacement;
+        if (Game1.activeClickableMenu is ItemGrabMenu replacement)
+            replacement.heldItem = held;
+    }
+
+    /// <summary>Draw the settings button over an open grabber menu.</summary>
+    private void OnRenderedActiveMenu(object? sender, RenderedActiveMenuEventArgs e)
+    {
+        if (!this.TryGetOpenGrabber(out _, out ItemGrabMenu? menu))
+        {
+            this.SettingsButton = null;
+            return;
+        }
+
+        this.SettingsButton = new ClickableTextureComponent(
+            new Rectangle(
+                menu.xPositionOnScreen + menu.width + this.Config.SettingsButtonOffsetX,
+                menu.yPositionOnScreen + menu.height / 3 - 64 - 64 - 16 - 80 + this.Config.SettingsButtonOffsetY,
+                64,
+                64),
+            Game1.mouseCursors,
+            new Rectangle(383, 493, 11, 14),
+            4f);
+
+        this.SettingsButton.draw(e.SpriteBatch);
+
+        if (this.SettingsButton.containsPoint(Game1.getOldMouseX(ui_scale: true), Game1.getOldMouseY(ui_scale: true)))
+            IClickableMenu.drawHoverText(e.SpriteBatch, I18n.Menu_SettingsTooltip(), Game1.smallFont);
+
+        // the button is drawn after the menu, so the cursor has to be drawn again on top of it
+        menu.drawMouse(e.SpriteBatch);
+    }
+
+    /// <summary>Open the settings page when the button is clicked.</summary>
+    private void OnButtonPressed(object? sender, ButtonPressedEventArgs e)
+    {
+        if (this.SettingsButton == null || (e.Button != SButton.MouseLeft && e.Button != SButton.ControllerA))
+            return;
+
+        if (!this.TryGetOpenGrabber(out Object? grabber, out ItemGrabMenu? menu))
+            return;
+
+        // menu bounds are in UI space; the cursor position carried on the event is not, so the game's own
+        // UI-space reading is used instead. They only agree at 100% zoom, which is how the button came to
+        // draw in one place and answer in another.
+        if (!this.SettingsButton.containsPoint(Game1.getMouseX(ui_scale: true), Game1.getMouseY(ui_scale: true)))
+            return;
+
+        this.Helper.Input.Suppress(e.Button);
+        Game1.playSound("smallSelect");
+
+        Chest? chest = grabber.heldObject.Value as Chest;
+        GrabberSettingsMenu settings = new(grabber, GrabberSettings.Load(grabber), this.Config);
+
+        // come back to the grabber's inventory when the settings page is closed
+        if (chest != null)
+            settings.exitFunction = () => AutoGrabberPatches.OpenMenu(grabber, chest);
+
+        Game1.activeClickableMenu = settings;
+    }
+
+    /// <summary>Get the grabber whose menu is open, if any.</summary>
+    private bool TryGetOpenGrabber([NotNullWhen(true)] out Object? grabber, [NotNullWhen(true)] out ItemGrabMenu? menu)
+    {
+        grabber = null;
+        menu = null;
+
+        if (Game1.activeClickableMenu is not ItemGrabMenu found || found.context is not Object obj || obj.QualifiedItemId != AutoGrabberPatches.AutoGrabberId)
+            return false;
+
+        grabber = obj;
+        menu = found;
+        return true;
     }
 
     /// <summary>Find the placed grabber holding a given chest, if any.</summary>
