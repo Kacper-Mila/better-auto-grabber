@@ -25,4 +25,10 @@ internal sealed class ListRow
 
     /// <summary>Extra text drawn right-aligned on the row, such as a section's selected count.</summary>
     public string? Suffix { get; init; }
+
+    /// <summary>Whether the suffix is an action, and should be drawn as a button.</summary>
+    public bool SuffixIsButton { get; init; }
+
+    /// <summary>Whether the row's value is chosen from a dropdown rather than toggled.</summary>
+    public bool IsDropdown { get; init; }
 }

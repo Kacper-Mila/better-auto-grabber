@@ -7,6 +7,7 @@
     "target.mine-boulder": "Mine Boulder",
     "target.artifact-spot": "Artifact Spot",
     "target.seed-spot": "Seed Spot",
+    "target.shake-trees": "Shake trees",
 
     "group.forage": "Forage",
     "group.crops": "Crops",
@@ -14,6 +15,8 @@
     "group.bushes": "Bushes",
     "group.clumps": "Stumps & Boulders",
     "group.digging": "Digging",
+    "group.trees": "Trees",
+    "group.machines": "Machines",
 
     "menu.title": "Auto-Grabber",
     "menu.tab.targets": "What to grab",

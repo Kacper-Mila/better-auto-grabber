@@ -23,6 +23,7 @@ internal static class I18n
     public static string Target_MineBoulder() => I18n.Get("target.mine-boulder");
     public static string Target_ArtifactSpot() => I18n.Get("target.artifact-spot");
     public static string Target_SeedSpot() => I18n.Get("target.seed-spot");
+    public static string Target_ShakeTrees() => I18n.Get("target.shake-trees");
 
     public static string Group_Forage() => I18n.Get("group.forage");
     public static string Group_Crops() => I18n.Get("group.crops");
@@ -30,6 +31,8 @@ internal static class I18n
     public static string Group_Bushes() => I18n.Get("group.bushes");
     public static string Group_Clumps() => I18n.Get("group.clumps");
     public static string Group_Digging() => I18n.Get("group.digging");
+    public static string Group_Trees() => I18n.Get("group.trees");
+    public static string Group_Machines() => I18n.Get("group.machines");
 
     public static string Menu_Title() => I18n.Get("menu.title");
     public static string Menu_TabTargets() => I18n.Get("menu.tab.targets");

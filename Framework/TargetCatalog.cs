@@ -53,6 +53,15 @@ internal static class TargetCatalog
     /// <summary>The target ID for seed spots.</summary>
     public const string SeedSpotId = "dig:seed";
 
+    /// <summary>The target ID for shaking wild trees.</summary>
+    public const string ShakeTreesId = "tree:shake";
+
+    /// <summary>Build the target ID for a machine.</summary>
+    public static string MachineId(string qualifiedItemId) => "machine:" + qualifiedItemId;
+
+    /// <summary>The crab pot's qualified item ID, which is a machine the game handles specially.</summary>
+    public const string CrabPotItemId = "(O)710";
+
     /// <summary>Rebuild the catalog from the currently loaded game data.</summary>
     public static void Rebuild()
     {
@@ -65,6 +74,8 @@ internal static class TargetCatalog
         TargetCatalog.AddBushes();
         TargetCatalog.AddClumps();
         TargetCatalog.AddDigging();
+        TargetCatalog.AddTrees();
+        TargetCatalog.AddMachines();
 
         foreach (HarvestTarget target in TargetCatalog.Targets)
             TargetCatalog.ByIdLookup[target.Id] = target;
@@ -146,6 +157,35 @@ internal static class TargetCatalog
     {
         TargetCatalog.Add(TargetCatalog.ArtifactSpotId, I18n.Target_ArtifactSpot(), TargetGroup.Digging, "(O)590");
         TargetCatalog.Add(TargetCatalog.SeedSpotId, I18n.Target_SeedSpot(), TargetGroup.Digging, "(O)SeedSpot");
+    }
+
+    /// <summary>Add the row for shaking wild trees.</summary>
+    /// <remarks>
+    ///   One row rather than one per species: shaking is a single action with an unpredictable yield —
+    ///   seeds, the occasional mystery box, whatever a content pack has added — so there's nothing
+    ///   meaningful to pick between.
+    /// </remarks>
+    private static void AddTrees()
+    {
+        TargetCatalog.Add(TargetCatalog.ShakeTreesId, I18n.Target_ShakeTrees(), TargetGroup.Trees, "(O)309");
+    }
+
+    /// <summary>Add a row for every machine that can hold an output.</summary>
+    private static void AddMachines()
+    {
+        HashSet<string> machineIds = new(DataLoader.Machines(Game1.content).Keys);
+
+        // crab pots have their own class and their own collection rules, so they're listed explicitly
+        machineIds.Add(TargetCatalog.CrabPotItemId);
+
+        foreach (string id in TargetCatalog.SortByName(machineIds))
+        {
+            // the auto-grabber is a machine too; letting one empty another is asking for trouble
+            if (id == "(BC)165" || ItemRegistry.GetData(id) == null)
+                continue;
+
+            TargetCatalog.Add(TargetCatalog.MachineId(id), TargetCatalog.NameOf(id), TargetGroup.Machines, id);
+        }
     }
 
     /// <summary>Add the qualified form of any of the given IDs which resolve to a real item.</summary>

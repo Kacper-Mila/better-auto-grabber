@@ -5,6 +5,7 @@ using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Extensions;
+using StardewValley.GameData.Machines;
 using StardewValley.Objects;
 using StardewValley.TerrainFeatures;
 using StardewValley.Tools;
@@ -49,6 +50,8 @@ internal sealed class HarvestEngine
                 this.SweepFruitTrees(location, settings, output);
                 this.SweepResourceClumps(location, settings, output);
                 this.SweepDigSpots(location, settings, output);
+                this.SweepTrees(location, settings, output);
+                this.SweepMachines(location, settings, output);
             }
             catch (Exception ex)
             {
@@ -386,6 +389,126 @@ internal sealed class HarvestEngine
 
             if (this.Config.GrantExperience)
                 Game1.player.gainExperience(2, 15);
+        }
+    }
+
+    /*********
+    ** Trees
+    *********/
+    /// <summary>Shake wild trees for whatever they're holding.</summary>
+    /// <remarks>
+    ///   This calls the game's own shake, so the yield is whatever shaking would normally give: seeds,
+    ///   the occasional mystery box, coconuts, anything a content pack adds. The game guards repeat
+    ///   shakes itself, so running every hour costs nothing after the first one each day.
+    /// </remarks>
+    private void SweepTrees(GameLocation location, GrabberSettings settings, GrabberOutput output)
+    {
+        if (!settings.TargetIds.Contains(TargetCatalog.ShakeTreesId))
+            return;
+
+        foreach ((Vector2 tile, TerrainFeature feature) in location.terrainFeatures.Pairs.ToArray())
+        {
+            if (output.IsFull)
+                return;
+
+            if (feature is not Tree tree || tree.tapped.Value || tree.stump.Value || tree.growthStage.Value < 5)
+                continue;
+
+            // nothing to shake loose once the seed is gone and today's shake has happened
+            if (!tree.hasSeed.Value && tree.wasShakenToday.Value)
+                continue;
+
+            this.CaptureDebris(location, output, tile, () => tree.shake(tile, doEvenIfStillShaking: false));
+        }
+    }
+
+    /*********
+    ** Machines
+    *********/
+    /// <summary>Empty machines that have finished.</summary>
+    private void SweepMachines(GameLocation location, GrabberSettings settings, GrabberOutput output)
+    {
+        foreach ((Vector2 tile, Object machine) in location.objects.Pairs.ToArray())
+        {
+            if (output.IsFull)
+                return;
+
+            if (!machine.readyForHarvest.Value || machine.heldObject.Value == null || machine is Chest)
+                continue;
+
+            if (!settings.TargetIds.Contains(TargetCatalog.MachineId(machine.QualifiedItemId)))
+                continue;
+
+            if (machine is CrabPot pot)
+                this.HarvestCrabPot(location, tile, pot, output);
+            else
+                this.HarvestMachine(location, tile, machine, output);
+        }
+    }
+
+    /// <summary>Take a machine's output, mirroring what collecting it by hand does.</summary>
+    private void HarvestMachine(GameLocation location, Vector2 tile, Object machine, GrabberOutput output)
+    {
+        Farmer who = Game1.player;
+        MachineData? data = machine.GetMachineData();
+        Object collected = machine.heldObject.Value;
+
+        // some machines decide their output at the moment you collect it
+        if (machine.lastOutputRuleId.Value != null && data?.OutputRules != null)
+        {
+            MachineOutputRule? rule = data.OutputRules.FirstOrDefault(candidate => candidate.Id == machine.lastOutputRuleId.Value);
+            if (rule?.RecalculateOnCollect == true)
+            {
+                machine.heldObject.Value = null;
+                machine.OutputMachine(data, rule, machine.lastInputItem.Value, who, location, probe: false, heldObjectOnly: true);
+                collected = machine.heldObject.Value ?? collected;
+            }
+        }
+
+        machine.heldObject.Value = null;
+        machine.readyForHarvest.Value = false;
+        machine.showNextIndex.Value = false;
+        machine.ResetParentSheetIndex();
+
+        MachineDataUtility.UpdateStats(data?.StatsToIncrementWhenHarvested, collected, collected.Stack);
+        output.Deposit(collected, location, tile);
+
+        // machines like the crystalarium start their next batch the moment the last one is taken
+        if (MachineDataUtility.TryGetMachineOutputRule(machine, data, MachineOutputTrigger.OutputCollected, collected.getOne(), who, location, out MachineOutputRule outputRule, out _, out _, out _))
+            machine.OutputMachine(data, outputRule, machine.lastInputItem.Value, who, location, probe: false);
+
+        if (machine.IsTapper() && location.terrainFeatures.TryGetValue(tile, out TerrainFeature? feature) && feature is Tree tree)
+            tree.UpdateTapperProduct(machine, collected);
+
+        if (this.Config.GrantExperience && data?.ExperienceGainOnHarvest != null)
+            HarvestEngine.GrantMachineExperience(data.ExperienceGainOnHarvest);
+    }
+
+    /// <summary>Take a crab pot's catch and clear its bait, the way emptying one by hand does.</summary>
+    private void HarvestCrabPot(GameLocation location, Vector2 tile, CrabPot pot, GrabberOutput output)
+    {
+        Object catchItem = pot.heldObject.Value;
+
+        pot.heldObject.Value = null;
+        pot.readyForHarvest.Value = false;
+        pot.tileIndexToShow = 710;
+        pot.bait.Value = null;
+
+        output.Deposit(catchItem, location, tile);
+
+        if (this.Config.GrantExperience)
+            Game1.player.gainExperience(1, 5);
+    }
+
+    /// <summary>Grant the skill experience a machine gives when its output is collected.</summary>
+    private static void GrantMachineExperience(string experienceGain)
+    {
+        string[] parts = experienceGain.Split(' ');
+        for (int i = 0; i < parts.Length; i += 2)
+        {
+            int skill = Farmer.getSkillNumberFromName(parts[i]);
+            if (skill != -1 && ArgUtility.TryGetInt(parts, i + 1, out int amount, out _, "int amount"))
+                Game1.player.gainExperience(skill, amount);
         }
     }
 

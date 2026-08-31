@@ -8,7 +8,9 @@ internal enum TargetGroup
     FruitTrees,
     Bushes,
     Clumps,
-    Digging
+    Digging,
+    Trees,
+    Machines
 }
 
 /// <summary>One selectable row on a grabber's target list.</summary>
