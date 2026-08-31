@@ -329,16 +329,24 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
 
         foreach (GameLocation location in locations)
         {
-            string name = location.DisplayName ?? location.Name;
-            if (search.Length > 0 && !name.Contains(search, StringComparison.CurrentCultureIgnoreCase))
-                continue;
-
-            bool visited = GrabberSettings.HasVisited(location);
             string key = location.Name;
+            string name = string.IsNullOrWhiteSpace(location.DisplayName) ? key : location.DisplayName;
+            bool visited = GrabberSettings.HasVisited(location);
+
+            if (search.Length > 0
+                && !name.Contains(search, StringComparison.CurrentCultureIgnoreCase)
+                && !key.Contains(search, StringComparison.CurrentCultureIgnoreCase))
+            {
+                continue;
+            }
 
             this.Rows.Add(new ListRow
             {
-                Label = visited ? name : $"{name} ({I18n.Scope_UnvisitedNote()})",
+                Label = name,
+
+                // several places share a display name -- the farm, the farmhouse and the cellar are all
+                // "<name> Farm" -- so the internal name is shown alongside to tell them apart
+                Suffix = visited ? key : $"{key} - {I18n.Scope_UnvisitedNote()}",
                 Greyed = !visited,
                 IsChecked = () => this.Settings.SelectedLocations.Contains(key),
                 Toggle = () =>

@@ -1,3 +1,4 @@
+using System.Linq;
 using Microsoft.Xna.Framework;
 using StardewValley;
 using StardewValley.Objects;
@@ -17,7 +18,19 @@ internal sealed class GrabberOutput
     public int Collected { get; private set; }
 
     /// <summary>Whether the chest ran out of room, which stops the grabber for this pass.</summary>
-    public bool IsFull => !this.Chest.Items.HasEmptySlots();
+    public bool IsFull => GrabberOutput.IsChestFull(this.Chest);
+
+    /// <summary>Get whether a chest has no room left.</summary>
+    /// <remarks>
+    ///   This can't use <c>Inventory.HasEmptySlots</c>: that compares the number of slots which exist
+    ///   against the number in use, and an untouched grabber has an empty list rather than 36 empty
+    ///   slots — so it reports a brand new grabber as full. Comparing against the chest's capacity is
+    ///   what actually answers the question.
+    /// </remarks>
+    public static bool IsChestFull(Chest chest)
+    {
+        return chest.Items.Count(item => item != null) >= chest.GetActualCapacity();
+    }
 
     public GrabberOutput(Chest chest)
     {

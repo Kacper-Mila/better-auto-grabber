@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using BetterAutoGrabber.Framework;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -24,7 +25,7 @@ internal sealed class GrabberMenu : ItemGrabMenu
 
     public GrabberMenu(Object grabber, Chest chest, ModConfig config)
         : base(
-            inventory: chest.Items,
+            inventory: GrabberMenu.PrepareInventory(chest),
             reverseGrab: false,
             showReceivingMenu: true,
             highlightFunction: InventoryMenu.highlightAllItems,
@@ -84,6 +85,30 @@ internal sealed class GrabberMenu : ItemGrabMenu
 
         // the base menu draws the cursor, so it has to be drawn again above the button
         this.drawMouse(b);
+    }
+
+    /// <summary>Give the chest its full set of slots before the menu lays itself out.</summary>
+    /// <remarks>
+    ///   An untouched grabber holds an empty list rather than 36 empty slots, because vanilla only ever
+    ///   opens a grabber that already has something in it. The menu lays out its grid from that list, so
+    ///   without this the receiving area comes out malformed. Emptying a chest by hand leaves it in this
+    ///   same padded state, so it's nothing the game doesn't already do.
+    /// </remarks>
+    private static IList<Item> PrepareInventory(Chest chest)
+    {
+        while (chest.Items.Count < chest.GetActualCapacity())
+            chest.Items.Add(null);
+
+        return chest.Items;
+    }
+
+    /// <inheritdoc />
+    protected override void cleanupBeforeExit()
+    {
+        base.cleanupBeforeExit();
+
+        // don't leave the padding behind in the save file
+        this.GrabberChest.clearNulls();
     }
 
     /// <summary>Put the settings button in the column of buttons down the menu's right edge.</summary>

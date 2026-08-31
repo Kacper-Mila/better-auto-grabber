@@ -171,7 +171,7 @@ internal sealed class ModEntry : Mod
             if (grabber.heldObject.Value is Chest chest)
             {
                 grabber.showNextIndex.Value = !chest.isEmpty();
-                if (!chest.Items.HasEmptySlots())
+                if (GrabberOutput.IsChestFull(chest))
                     this.FullGrabbers.Add(label);
             }
 
