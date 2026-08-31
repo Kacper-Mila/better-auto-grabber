@@ -463,8 +463,18 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
                 int textX = x + 56;
                 if (row.IconItemId != null)
                 {
+                    const float box = 40f;
                     ParsedItemData data = ItemRegistry.GetDataOrErrorItem(row.IconItemId);
-                    b.Draw(data.GetTexture(), new Vector2(textX, y + 4), data.GetSourceRect(), Color.White * alpha, 0f, Vector2.Zero, 2.5f, SpriteEffects.None, 0.9f);
+                    Rectangle source = data.GetSourceRect();
+
+                    // a keg's sprite is 16x32 where a parsnip's is 16x16, so each is scaled to fit the
+                    // same square and centred in it rather than spilling into the rows above and below
+                    float scale = box / Math.Max(source.Width, source.Height);
+                    Vector2 position = new(
+                        textX + (box - source.Width * scale) / 2f,
+                        y + (GrabberSettingsMenu.RowHeight - 8 - source.Height * scale) / 2f);
+
+                    b.Draw(data.GetTexture(), position, source, Color.White * alpha, 0f, Vector2.Zero, scale, SpriteEffects.None, 0.9f);
                     textX += 52;
                 }
 
@@ -550,7 +560,9 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
             TargetGroup.FruitTrees => I18n.Group_FruitTrees(),
             TargetGroup.Bushes => I18n.Group_Bushes(),
             TargetGroup.Clumps => I18n.Group_Clumps(),
-            _ => I18n.Group_Digging()
+            TargetGroup.Digging => I18n.Group_Digging(),
+            TargetGroup.Trees => I18n.Group_Trees(),
+            _ => I18n.Group_Machines()
         };
     }
 

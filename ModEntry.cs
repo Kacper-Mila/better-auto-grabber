@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using BetterAutoGrabber.Framework;
@@ -57,6 +58,8 @@ internal sealed class ModEntry : Mod
         helper.Events.Display.MenuChanged += this.OnMenuChanged;
         helper.Events.Display.RenderedActiveMenu += this.OnRenderedActiveMenu;
         helper.Events.Input.ButtonPressed += this.OnButtonPressed;
+
+        helper.ConsoleCommands.Add("bag_grabbers", "List every placed auto-grabber, where it reaches and what it collects.", this.HandleGrabbersCommand);
     }
 
     /*********
@@ -75,7 +78,13 @@ internal sealed class ModEntry : Mod
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
         TargetCatalog.Rebuild();
-        this.Monitor.Log($"Loaded {TargetCatalog.All.Count} harvest targets.", LogLevel.Trace);
+
+        string breakdown = string.Join(", ", TargetCatalog.All
+            .GroupBy(target => target.Group)
+            .OrderBy(group => group.Key)
+            .Select(group => $"{group.Count()} {group.Key}"));
+
+        this.Monitor.Log($"Loaded {TargetCatalog.All.Count} harvest targets: {breakdown}.", LogLevel.Trace);
     }
 
     /// <summary>Run the grabbers set to collect once a day, and reset the day's tally.</summary>
@@ -231,21 +240,31 @@ internal sealed class ModEntry : Mod
             if (!settings.HasExtraTargets || !this.IsDue(settings, trigger))
                 continue;
 
+            List<GameLocation> reachable = settings.ResolveLocations(grabber, this.Config).ToList();
+
             // a location is swept once per pass, so two global grabbers don't both strip it
-            List<GameLocation> locations = settings
-                .ResolveLocations(grabber, this.Config)
-                .Where(location => claimed.Add(location.NameOrUniqueName))
-                .ToList();
+            List<GameLocation> locations = reachable.Where(location => claimed.Add(location.NameOrUniqueName)).ToList();
+
+            if (this.Config.VerboseLogging && locations.Count < reachable.Count)
+            {
+                string taken = string.Join(", ", reachable.Except(locations).Select(location => location.NameOrUniqueName));
+                this.Monitor.Log($"Grabber at {home.NameOrUniqueName} ({grabber.TileLocation.X}, {grabber.TileLocation.Y}) skipped {taken}: already swept by another grabber this pass.", LogLevel.Debug);
+            }
 
             if (locations.Count == 0)
                 continue;
 
-            int collected = this.Engine.Run(grabber, settings, locations);
-            if (collected <= 0)
+            Stopwatch timer = Stopwatch.StartNew();
+            HarvestReport report = this.Engine.Run(grabber, settings, locations);
+            timer.Stop();
+
+            this.LogPass(home, grabber, settings, locations, report, timer.ElapsedMilliseconds);
+
+            if (report.Total <= 0)
                 continue;
 
             string label = home.DisplayName ?? home.Name;
-            this.DailyTally[label] = this.DailyTally.GetValueOrDefault(label) + collected;
+            this.DailyTally[label] = this.DailyTally.GetValueOrDefault(label) + report.Total;
 
             if (grabber.heldObject.Value is Chest chest)
             {
@@ -254,9 +273,70 @@ internal sealed class ModEntry : Mod
                     this.FullGrabbers.Add(label);
             }
 
-            if (this.Config.VerboseLogging)
-                this.Monitor.Log($"Grabber in '{home.NameOrUniqueName}' collected {collected} item(s) from {locations.Count} location(s).", LogLevel.Debug);
         }
+    }
+
+    /// <summary>Log what a grabber is set to and what its pass did.</summary>
+    private void LogPass(GameLocation home, Object grabber, GrabberSettings settings, List<GameLocation> locations, HarvestReport report, long elapsedMs)
+    {
+        if (!this.Config.VerboseLogging || !report.HasAnythingToSay)
+            return;
+
+        this.Monitor.Log(ModEntry.DescribeGrabber(home, grabber, settings, locations), LogLevel.Debug);
+
+        if (report.Total > 0)
+            this.Monitor.Log($"    collected {report.Total} in {elapsedMs}ms: {report.DescribeCollected()}", LogLevel.Debug);
+        else
+            this.Monitor.Log($"    collected nothing ({elapsedMs}ms)", LogLevel.Debug);
+
+        if (report.Skipped.Count > 0)
+            this.Monitor.Log($"    passed over: {report.DescribeSkipped()}", LogLevel.Debug);
+
+        if (report.StoppedWhenFull)
+            this.Monitor.Log("    stopped early: the grabber is full", LogLevel.Debug);
+    }
+
+    /// <summary>Print every placed grabber's configuration to the console.</summary>
+    private void HandleGrabbersCommand(string command, string[] args)
+    {
+        if (!Context.IsWorldReady)
+        {
+            this.Monitor.Log("Load a save first.", LogLevel.Info);
+            return;
+        }
+
+        int found = 0;
+        foreach ((GameLocation home, Object grabber) in ModEntry.FindGrabbers())
+        {
+            found++;
+            GrabberSettings settings = GrabberSettings.Load(grabber);
+            this.Monitor.Log(ModEntry.DescribeGrabber(home, grabber, settings, settings.ResolveLocations(grabber, this.Config).ToList()), LogLevel.Info);
+
+            if (grabber.heldObject.Value is Chest chest)
+                this.Monitor.Log($"    holding {chest.Items.Count(item => item != null)}/{chest.GetActualCapacity()} slots", LogLevel.Info);
+        }
+
+        if (found == 0)
+            this.Monitor.Log("No auto-grabbers are placed anywhere.", LogLevel.Info);
+    }
+
+    /// <summary>Describe a grabber's configuration in one line.</summary>
+    private static string DescribeGrabber(GameLocation home, Object grabber, GrabberSettings settings, IReadOnlyCollection<GameLocation>? locations = null)
+    {
+        string targets = settings.TargetIds.Count == 0
+            ? "nothing (animal products only)"
+            : string.Join(", ", settings.TargetIds.Select(id => TargetCatalog.Get(id)?.DisplayName ?? id).OrderBy(name => name));
+
+        string reach = locations != null
+            ? string.Join(", ", locations.Select(location => location.NameOrUniqueName))
+            : string.Join(", ", settings.ResolveLocations(grabber, new ModConfig()).Select(location => location.NameOrUniqueName));
+
+        if (string.IsNullOrEmpty(reach))
+            reach = "nowhere";
+
+        return $"Grabber at {home.NameOrUniqueName} ({grabber.TileLocation.X}, {grabber.TileLocation.Y})"
+            + $" | runs {settings.Frequency} | scope {settings.Scope} -> {reach}"
+            + $" | grabs {settings.TargetIds.Count}: {targets}";
     }
 
     /// <summary>Get every placed auto-grabber, ordered so narrower grabbers claim their location first.</summary>

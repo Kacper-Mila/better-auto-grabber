@@ -30,17 +30,23 @@ internal sealed class HarvestEngine
     /// <param name="grabber">The placed grabber.</param>
     /// <param name="settings">The grabber's settings.</param>
     /// <param name="locations">The locations it reaches this pass.</param>
-    /// <returns>The number of items collected.</returns>
-    public int Run(Object grabber, GrabberSettings settings, IEnumerable<GameLocation> locations)
+    /// <returns>A report of what the pass collected and what it passed over.</returns>
+    public HarvestReport Run(Object grabber, GrabberSettings settings, IEnumerable<GameLocation> locations)
     {
+        HarvestReport report = new();
         if (grabber.heldObject.Value is not Chest chest || !settings.HasExtraTargets)
-            return 0;
+            return report;
 
-        GrabberOutput output = new(chest);
+        GrabberOutput output = new(chest, report);
         foreach (GameLocation location in locations)
         {
             if (output.IsFull)
+            {
+                report.StoppedWhenFull = true;
                 break;
+            }
+
+            report.Locations.Add(location.NameOrUniqueName);
 
             try
             {
@@ -59,7 +65,7 @@ internal sealed class HarvestEngine
             }
         }
 
-        return output.Collected;
+        return report;
     }
 
     /*********
@@ -283,8 +289,14 @@ internal sealed class HarvestEngine
                 continue;
 
             string targetId = TargetCatalog.ClumpId(HarvestEngine.NormalizeClumpIndex(clump.parentSheetIndex.Value));
-            if (!settings.TargetIds.Contains(targetId) || !this.HasToolFor(targetId))
+            if (!settings.TargetIds.Contains(targetId))
                 continue;
+
+            if (!this.HasToolFor(targetId))
+            {
+                output.Report.Skip($"{TargetCatalog.Get(targetId)?.DisplayName ?? targetId}: {this.DescribeToolRequirement(targetId)}");
+                continue;
+            }
 
             Vector2 tile = clump.Tile;
             location.resourceClumps.Remove(clump);
@@ -369,8 +381,14 @@ internal sealed class HarvestEngine
                 continue;
 
             string targetId = isSeedSpot ? TargetCatalog.SeedSpotId : TargetCatalog.ArtifactSpotId;
-            if (!settings.TargetIds.Contains(targetId) || !this.HasToolFor(targetId))
+            if (!settings.TargetIds.Contains(targetId))
                 continue;
+
+            if (!this.HasToolFor(targetId))
+            {
+                output.Report.Skip($"{TargetCatalog.Get(targetId)?.DisplayName ?? targetId}: {this.DescribeToolRequirement(targetId)}");
+                continue;
+            }
 
             location.objects.Remove(tile);
             Game1.player.stats.Increment("ArtifactSpotsDug", 1);
@@ -433,11 +451,14 @@ internal sealed class HarvestEngine
             if (output.IsFull)
                 return;
 
-            if (!machine.readyForHarvest.Value || machine.heldObject.Value == null || machine is Chest)
+            if (machine is Chest || !settings.TargetIds.Contains(TargetCatalog.MachineId(machine.QualifiedItemId)))
                 continue;
 
-            if (!settings.TargetIds.Contains(TargetCatalog.MachineId(machine.QualifiedItemId)))
+            if (!machine.readyForHarvest.Value || machine.heldObject.Value == null)
+            {
+                output.Report.Skip($"{machine.DisplayName}: nothing ready to collect");
                 continue;
+            }
 
             if (machine is CrabPot pot)
                 this.HarvestCrabPot(location, tile, pot, output);
@@ -551,6 +572,27 @@ internal sealed class HarvestEngine
             _ when targetId == TargetCatalog.ClumpId(ResourceClump.mineRock1Index) => HarvestEngine.ToolLevel("Pickaxe") >= 0,
             _ => true
         };
+    }
+
+    /// <summary>Describe why a tool requirement wasn't met, for the log.</summary>
+    private string DescribeToolRequirement(string targetId)
+    {
+        if (targetId == TargetCatalog.ArtifactSpotId || targetId == TargetCatalog.SeedSpotId)
+            return "needs a hoe in your inventory";
+
+        if (targetId == TargetCatalog.ClumpId(ResourceClump.stumpIndex))
+            return "needs a copper axe or better in your inventory";
+
+        if (targetId == TargetCatalog.ClumpId(ResourceClump.hollowLogIndex))
+            return "needs a steel axe or better in your inventory";
+
+        if (targetId == TargetCatalog.ClumpId(ResourceClump.boulderIndex))
+            return "needs a steel pickaxe or better in your inventory";
+
+        if (targetId == TargetCatalog.ClumpId(ResourceClump.meteoriteIndex))
+            return "needs a gold pickaxe or better in your inventory";
+
+        return "needs a better tool in your inventory";
     }
 
     /// <summary>Get the upgrade level of a tool the player is carrying, or -1 if they aren't carrying one.</summary>

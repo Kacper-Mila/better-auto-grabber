@@ -14,8 +14,8 @@ internal sealed class GrabberOutput
 {
     private readonly Chest Chest;
 
-    /// <summary>How many items were collected this pass.</summary>
-    public int Collected { get; private set; }
+    /// <summary>What this pass collected and passed over.</summary>
+    public HarvestReport Report { get; }
 
     /// <summary>Whether the chest ran out of room, which stops the grabber for this pass.</summary>
     public bool IsFull => GrabberOutput.IsChestFull(this.Chest);
@@ -32,9 +32,10 @@ internal sealed class GrabberOutput
         return chest.Items.Count(item => item != null) >= chest.GetActualCapacity();
     }
 
-    public GrabberOutput(Chest chest)
+    public GrabberOutput(Chest chest, HarvestReport report)
     {
         this.Chest = chest;
+        this.Report = report;
     }
 
     /// <summary>Put a harvested item in the chest, or drop it where it came from if the chest filled up mid-harvest.</summary>
@@ -47,12 +48,15 @@ internal sealed class GrabberOutput
             return;
 
         Item? leftover = this.Chest.addItem(item);
-        this.Collected += item.Stack - (leftover?.Stack ?? 0);
+        this.Report.Add(item.DisplayName, item.Stack - (leftover?.Stack ?? 0));
 
         // A single harvest can yield several stacks (a meteorite gives ore, stone and geodes at once),
         // so the last slot can fill partway through. Anything that doesn't fit is dropped on the tile
         // it came from rather than deleted.
         if (leftover != null)
+        {
+            this.Report.Skip($"{item.DisplayName} dropped on the ground (grabber full)");
             Game1.createItemDebris(leftover, tile * 64f, -1, location);
+        }
     }
 }
