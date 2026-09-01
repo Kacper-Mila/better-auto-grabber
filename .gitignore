@@ -4,3 +4,8 @@ obj/
 .DS_Store
 .idea/
 .vs/
+
+# AI assistant instructions (kept local)
+CLAUDE.md
+.claude/
+.github/copilot-instructions.md
