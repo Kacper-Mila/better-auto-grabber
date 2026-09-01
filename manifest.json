@@ -1,10 +1,10 @@
 {
   "Name": "Better Auto-Grabber",
   "Author": "kacper",
-  "Version": "1.0.0",
+  "Version": "1.1.0",
   "Description": "Per-grabber control over what each auto-grabber collects and where it reaches.",
   "UniqueID": "kacper.BetterAutoGrabber",
   "EntryDll": "BetterAutoGrabber.dll",
   "MinimumApiVersion": "4.0.0",
-  "UpdateKeys": [ "GitHub:Kacper-Mila/better-auto-grabber" ]
+  "UpdateKeys": ["Nexus:51575", "GitHub:Kacper-Mila/better-auto-grabber"]
 }

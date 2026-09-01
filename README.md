@@ -3,8 +3,9 @@
 A [SMAPI](https://smapi.io) mod for Stardew Valley 1.6 that gives every placed auto-grabber its own
 settings: what it collects, where it reaches, and how often it runs.
 
-Vanilla auto-grabber behaviour is untouched. A grabber with nothing ticked collects animal products
-and nothing else, exactly as it always did.
+Vanilla auto-grabber behaviour is untouched. A grabber with nothing ticked behaves exactly like a
+stock one: dropped in a coop it still collects that coop's eggs, and it still does nothing anywhere
+else.
 
 ## Using it
 
@@ -27,18 +28,58 @@ listed by machine. Nothing is ticked by default.
 Locations show their internal name beside their display name, because the farm, the farmhouse and
 the cellar all present as "*your farm* Farm" otherwise.
 
-**Runs** sets how often this grabber works, or leaves it following the mod-wide default.
+**One row per kind of building, covering all of them.** There is a single **Coop** row, and ticking it
+reaches every coop you own — both of them if you have two, and whatever their tier, since a Coop, a Big
+Coop and a Deluxe Coop are all just coops. Barns, sheds and cabins work the same way. There's no way to
+serve one coop and leave the one beside it alone.
+
+This is deliberate. The game gives each building interior a unique ID but no name a player would
+recognise — a per-building list would have to label its rows `Coop4cb0a4d1-3f8b-49c9-a375-eb8251426524`
+— so the useful thing to offer is the family. The rows follow each building's upgrade chain, so a coop
+tier added by a content pack joins the Coop row on its own.
+
+**Runs** sets how often this grabber works, or leaves it following the mod-wide default. Every
+grabber also runs once as the day begins whatever its interval, so you wake up to a grabber that has
+already done its morning round.
 
 ## What it can collect
 
 Forage, crops (including indoor pots), fruit trees, berry and tea bushes, large stumps and logs,
-boulders and meteorites, artifact and seed spots, tree shaking, and machines.
+boulders and meteorites, artifact and seed spots, tree shaking, animal products, and machines.
 
 Two deliberate omissions:
 
 - **Giant crops** are never harvested. Plenty of people grow them as decoration, and felling one is
   destructive in a way nothing else on the list is.
 - **Golden walnut bushes** aren't collectable.
+
+### Animal products
+
+The **Animals** group lists every item a farm animal produces, one row per item — Egg and Large Egg
+are separate rows, so ticking one doesn't quietly give you the other. Rows come from `Data/FarmAnimals`,
+so animals added by content packs appear on their own. Slime balls share the group: they aren't animal
+produce (a slime is a monster, not a farm animal), but clearing a hutch is the same chore. That row is
+listed as the ball rather than as Slime, because slime also drops from anything you kill.
+
+The point of the group is reach. A stock grabber only serves the building it stands in; one grabber
+outside with the right scope serves every coop and barn you own, and picks up truffles from the farm
+during the day as the pigs dig them.
+
+**It obeys the scope tab like everything else.** A grabber on the farm set to *This location only*
+reaches the farm — truffles, and any animal that has wandered out to graze — but not the inside of a
+coop. To collect eggs, milk and wool you have to tick the coops and barns under *Chosen locations*, or
+use *Everywhere I've been*. Ticking *Coop* covers every coop on the farm at once.
+
+Two things it deliberately doesn't do:
+
+- **No friendship.** Milking by hand gives +5 friendship for the walk over; a grabber didn't make the
+  walk. If you want animals to love you faster, pet them.
+- **A pig's truffle stays on the pig** until the pig digs it up outdoors, in season, in fair weather.
+  The truffle sits in the same field as a cow's milk, and taking it directly would be a guaranteed
+  truffle a day from a pig that never left the barn.
+
+Milk and wool need no milk pail or shears — a stock grabber standing in a barn already collects them
+without either, so requiring one here would be stricter than the game is with itself.
 
 Tree shaking runs the game's own shake, so it yields whatever shaking by hand would: seeds, the
 occasional mystery box, and anything a content pack adds. Machines go through the game's own

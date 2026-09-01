@@ -385,18 +385,21 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
             return;
 
         string search = this.SearchBox.Text?.Trim() ?? "";
-        List<GameLocation> locations = GrabberSettings.AllLocations()
+
+        // One row per key, not per location: every coop the player owns shares the "Coop" key, at any
+        // tier, so the list stays as short as the farm looks rather than growing a row per building.
+        List<IGrouping<string, GameLocation>> groups = GrabberSettings.AllLocations()
             .Where(location => !string.IsNullOrWhiteSpace(location.Name))
-            .GroupBy(location => location.Name)
-            .Select(group => group.First())
-            .OrderBy(location => location.DisplayName ?? location.Name, StringComparer.CurrentCultureIgnoreCase)
+            .GroupBy(GrabberSettings.SelectionKey)
+            .OrderBy(group => GrabberSettings.SelectionName(group.First()), StringComparer.CurrentCultureIgnoreCase)
             .ToList();
 
-        foreach (GameLocation location in locations)
+        foreach (IGrouping<string, GameLocation> group in groups)
         {
-            string key = location.Name;
-            string name = string.IsNullOrWhiteSpace(location.DisplayName) ? key : location.DisplayName;
-            bool visited = GrabberSettings.HasVisited(location);
+            string key = group.Key;
+            string name = GrabberSettings.SelectionName(group.First());
+            bool visited = group.Any(GrabberSettings.HasVisited);
+            int count = group.Count();
 
             if (search.Length > 0
                 && !name.Contains(search, StringComparison.CurrentCultureIgnoreCase)
@@ -405,13 +408,15 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
                 continue;
             }
 
+            // Several places share a display name -- the farm, the farmhouse and the cellar are all
+            // "<name> Farm" -- so the key is shown alongside to tell them apart. Where the row stands for
+            // more than one building, how many is the more useful thing to say.
+            string suffix = count > 1 ? I18n.Scope_BuildingCount(count) : key;
+
             this.Rows.Add(new ListRow
             {
                 Label = name,
-
-                // several places share a display name -- the farm, the farmhouse and the cellar are all
-                // "<name> Farm" -- so the internal name is shown alongside to tell them apart
-                Suffix = visited ? key : $"{key} - {I18n.Scope_UnvisitedNote()}",
+                Suffix = visited ? suffix : $"{suffix} - {I18n.Scope_UnvisitedNote()}",
                 Greyed = !visited,
                 IsChecked = () => this.Settings.SelectedLocations.Contains(key),
                 Toggle = () =>
@@ -562,6 +567,7 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
             TargetGroup.Clumps => I18n.Group_Clumps(),
             TargetGroup.Digging => I18n.Group_Digging(),
             TargetGroup.Trees => I18n.Group_Trees(),
+            TargetGroup.Animals => I18n.Group_Animals(),
             _ => I18n.Group_Machines()
         };
     }

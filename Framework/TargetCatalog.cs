@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using StardewValley;
 using StardewValley.GameData.Crops;
+using StardewValley.GameData.FarmAnimals;
 using StardewValley.GameData.FruitTrees;
 using StardewValley.GameData.Locations;
 using StardewValley.ItemTypeDefinitions;
@@ -22,6 +23,7 @@ internal static class TargetCatalog
 
     private static readonly List<HarvestTarget> Targets = new();
     private static readonly Dictionary<string, HarvestTarget> ByIdLookup = new();
+    private static readonly HashSet<string> AnimalProductIds = new();
 
     /// <summary>Every row, in display order.</summary>
     public static IReadOnlyList<HarvestTarget> All => TargetCatalog.Targets;
@@ -56,6 +58,26 @@ internal static class TargetCatalog
     /// <summary>The target ID for shaking wild trees.</summary>
     public const string ShakeTreesId = "tree:shake";
 
+    /// <summary>Build the target ID for an animal product.</summary>
+    public static string AnimalId(string qualifiedItemId) => "animal:" + qualifiedItemId;
+
+    /// <summary>The target ID for slime balls on a slime hutch floor.</summary>
+    public const string SlimeBallId = "animal:slime-ball";
+
+    /// <summary>The slime ball's qualified item ID.</summary>
+    public const string SlimeBallItemId = "(BC)56";
+
+    /// <summary>Get whether an item is something a farm animal produces.</summary>
+    /// <remarks>
+    ///   These have their own group and their own pass, so the forage pass has to leave them alone:
+    ///   eggs and truffles are spawned objects lying on the floor like any other forage, and its
+    ///   catch-all row would otherwise collect them whatever the Animals group says.
+    /// </remarks>
+    public static bool IsAnimalProduct(string qualifiedItemId)
+    {
+        return TargetCatalog.AnimalProductIds.Contains(qualifiedItemId);
+    }
+
     /// <summary>Build the target ID for a machine.</summary>
     public static string MachineId(string qualifiedItemId) => "machine:" + qualifiedItemId;
 
@@ -67,6 +89,7 @@ internal static class TargetCatalog
     {
         TargetCatalog.Targets.Clear();
         TargetCatalog.ByIdLookup.Clear();
+        TargetCatalog.AnimalProductIds.Clear();
 
         TargetCatalog.AddForage();
         TargetCatalog.AddCrops();
@@ -75,6 +98,7 @@ internal static class TargetCatalog
         TargetCatalog.AddClumps();
         TargetCatalog.AddDigging();
         TargetCatalog.AddTrees();
+        TargetCatalog.AddAnimals();
         TargetCatalog.AddMachines();
 
         foreach (HarvestTarget target in TargetCatalog.Targets)
@@ -168,6 +192,34 @@ internal static class TargetCatalog
     private static void AddTrees()
     {
         TargetCatalog.Add(TargetCatalog.ShakeTreesId, I18n.Target_ShakeTrees(), TargetGroup.Trees, "(O)309");
+    }
+
+    /// <summary>Add a row for every item a farm animal produces.</summary>
+    /// <remarks>
+    ///   One row per item rather than one per animal, so that ticking Egg doesn't quietly hand you
+    ///   Large Eggs as well. Deluxe produce is listed alongside the ordinary kind for the same reason.
+    /// </remarks>
+    private static void AddAnimals()
+    {
+        HashSet<string> itemIds = new();
+        foreach (FarmAnimalData data in Game1.farmAnimalData.Values)
+        {
+            if (data == null)
+                continue;
+
+            foreach (FarmAnimalProduce produce in (data.ProduceItemIds ?? new()).Concat(data.DeluxeProduceItemIds ?? new()))
+                TargetCatalog.CollectItemIds(produce?.ItemId, null, itemIds);
+        }
+
+        TargetCatalog.AnimalProductIds.UnionWith(itemIds);
+
+        foreach (string id in TargetCatalog.SortByName(itemIds))
+            TargetCatalog.Add(TargetCatalog.AnimalId(id), TargetCatalog.NameOf(id), TargetGroup.Animals, id);
+
+        // Slime balls aren't farm animal produce -- a slime is a monster, not a FarmAnimal -- but a
+        // hutch full of them is the same chore, so the row lives in the same group. It's listed as the
+        // ball rather than as Slime, because slime also drops from anything you kill.
+        TargetCatalog.Add(TargetCatalog.SlimeBallId, I18n.Target_SlimeBall(), TargetGroup.Animals, TargetCatalog.SlimeBallItemId);
     }
 
     /// <summary>Add a row for every machine that can hold an output.</summary>
