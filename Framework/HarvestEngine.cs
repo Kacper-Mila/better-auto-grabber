@@ -5,6 +5,7 @@ using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Extensions;
+using StardewValley.GameData.FarmAnimals;
 using StardewValley.GameData.Machines;
 using StardewValley.Objects;
 using StardewValley.TerrainFeatures;
@@ -51,6 +52,7 @@ internal sealed class HarvestEngine
             try
             {
                 this.SweepForage(location, settings, output);
+                this.SweepAnimals(location, settings, output);
                 this.SweepCrops(location, settings, output, chest);
                 this.SweepLargeTerrainFeatures(location, settings, output);
                 this.SweepFruitTrees(location, settings, output);
@@ -86,6 +88,10 @@ internal sealed class HarvestEngine
             if (obj.QualifiedItemId is "(O)590" or "(O)SeedSpot")
                 continue;
 
+            // so is an egg on a coop floor, and a truffle a pig dug up; both belong to the Animals group
+            if (TargetCatalog.IsAnimalProduct(obj.QualifiedItemId))
+                continue;
+
             if (!this.WantsForage(settings, obj.QualifiedItemId))
                 continue;
 
@@ -111,6 +117,129 @@ internal sealed class HarvestEngine
             return true;
 
         return settings.TargetIds.Contains(TargetCatalog.OtherForageId) && TargetCatalog.Get(id) == null;
+    }
+
+    /*********
+    ** Animals
+    *********/
+    /// <summary>Collect animal products, both what's waiting on the floor and what's still on the animal.</summary>
+    /// <remarks>
+    ///   Vanilla splits these three ways by <see cref="FarmAnimalHarvestType" />. Eggs and the rest of
+    ///   the DropOvernight produce, and the truffles a pig digs up, are ordinary spawned objects lying on
+    ///   the ground by the time a pass sees them; only milk and wool are still held by the animal. Slime
+    ///   balls aren't animal produce at all, but collecting them is the same chore, so they share the pass.
+    /// </remarks>
+    private void SweepAnimals(GameLocation location, GrabberSettings settings, GrabberOutput output)
+    {
+        this.SweepProduceOnGround(location, settings, output);
+        this.SweepSlimeBalls(location, settings, output);
+        this.SweepProduceOnAnimals(location, settings, output);
+    }
+
+    /// <summary>Pick up animal produce lying on the ground, like eggs on a coop floor or a dug-up truffle.</summary>
+    private void SweepProduceOnGround(GameLocation location, GrabberSettings settings, GrabberOutput output)
+    {
+        foreach ((Vector2 tile, Object obj) in location.objects.Pairs.ToArray())
+        {
+            if (output.IsFull)
+                return;
+
+            if (!obj.isSpawnedObject.Value || obj.questItem.Value)
+                continue;
+
+            if (!settings.TargetIds.Contains(TargetCatalog.AnimalId(obj.QualifiedItemId)))
+                continue;
+
+            // A truffle counts as forage to the game -- Object.isForage special-cases it by ID -- so it
+            // gets the foraging quality roll and the experience that an egg on a coop floor doesn't.
+            bool isForage = obj.isForage();
+            if (isForage)
+                obj.Quality = location.GetHarvestSpawnedObjectQuality(Game1.player, true, tile);
+
+            Item one = obj.getOne();
+            location.objects.Remove(tile);
+            output.Deposit(one, location, tile);
+
+            if (!isForage)
+                continue;
+
+            Game1.stats.ItemsForaged++;
+            if (this.Config.GrantExperience && !location.isFarmBuildingInterior())
+                location.OnHarvestedForage(Game1.player, obj);
+        }
+    }
+
+    /// <summary>Pop the slime balls on a slime hutch floor.</summary>
+    private void SweepSlimeBalls(GameLocation location, GrabberSettings settings, GrabberOutput output)
+    {
+        if (!settings.TargetIds.Contains(TargetCatalog.SlimeBallId))
+            return;
+
+        foreach ((Vector2 tile, Object obj) in location.objects.Pairs.ToArray())
+        {
+            if (output.IsFull)
+                return;
+
+            if (obj.QualifiedItemId != TargetCatalog.SlimeBallItemId)
+                continue;
+
+            // The seed matches Object.CheckForActionOnSlimeBall, so the grabber gets exactly the slime
+            // that popping this ball by hand would have given today rather than its own roll.
+            Random random = Utility.CreateRandom(Game1.stats.DaysPlayed, Game1.uniqueIDForThisGame, tile.X * 77.0, tile.Y * 777.0, 2.0);
+
+            location.objects.Remove(tile);
+            output.Deposit(ItemRegistry.Create("(O)766", random.Next(10, 21)), location, tile);
+        }
+    }
+
+    /// <summary>Take the milk and wool still held by the animals here.</summary>
+    /// <remarks>
+    ///   This mirrors what a stock grabber already does for the animal house it stands in
+    ///   (<c>Object.DayUpdate</c>, case <c>(BC)165</c>), which needs no milk pail or shears either. The
+    ///   only thing added is reach: this runs wherever the grabber's scope says, so one grabber outside
+    ///   can serve a barn, and it catches animals that have since wandered out to graze.
+    /// </remarks>
+    private void SweepProduceOnAnimals(GameLocation location, GrabberSettings settings, GrabberOutput output)
+    {
+        foreach (FarmAnimal animal in location.animals.Values.ToArray())
+        {
+            if (output.IsFull)
+                return;
+
+            // Only tool-harvested produce is taken off the animal. A pig carries its truffle in the same
+            // field until it digs one up, and taking that directly would hand out a guaranteed truffle a
+            // day regardless of season, weather, or whether the pig ever left the barn.
+            if (animal.GetHarvestType() != FarmAnimalHarvestType.HarvestWithTool)
+                continue;
+
+            string? produceId = animal.currentProduce.Value;
+            if (string.IsNullOrWhiteSpace(produceId) || !animal.isAdult())
+                continue;
+
+            string? qualified = ItemRegistry.QualifyItemId(produceId);
+            if (qualified == null || !settings.TargetIds.Contains(TargetCatalog.AnimalId(qualified)))
+                continue;
+
+            Object produce = ItemRegistry.Create<Object>(qualified);
+            produce.CanBeSetDown = false;
+            produce.Quality = animal.produceQuality.Value;
+            if (animal.hasEatenAnimalCracker.Value)
+                produce.Stack = 2;
+
+            // counted before depositing, because depositing may split the stack across the last slot
+            animal.HandleStatsOnProduceCollected(produce, (uint)produce.Stack);
+            animal.currentProduce.Value = null;
+
+            // the sheep keeps its woolly sprite until this is called
+            animal.ReloadTextureIfNeeded();
+
+            output.Deposit(produce, location, animal.Tile);
+
+            // No friendship. The tool grants +5 for the walk over; a grabber didn't make the walk, and
+            // a stock grabber emptying its own barn grants none either.
+            if (this.Config.GrantExperience)
+                Game1.player.gainExperience(0, 5);
+        }
     }
 
     /*********

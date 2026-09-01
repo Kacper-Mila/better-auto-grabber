@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using StardewValley;
+using StardewValley.GameData.Buildings;
+using StardewValley.TokenizableStrings;
 using Object = StardewValley.Object;
 
 namespace BetterAutoGrabber.Framework;
@@ -38,13 +40,13 @@ internal sealed class GrabberSettings
     /// <summary>Which locations this grabber reaches.</summary>
     public ScopeMode Scope { get; set; } = ScopeMode.Local;
 
-    /// <summary>The locations picked for <see cref="ScopeMode.Selected" />, by internal name.</summary>
+    /// <summary>The locations picked for <see cref="ScopeMode.Selected" />, by <see cref="GrabberSettings.SelectionKey" />.</summary>
     public HashSet<string> SelectedLocations { get; } = new();
 
     /// <summary>How often this grabber runs, or <see cref="GrabFrequency.Default" /> to follow the mod-wide setting.</summary>
     public GrabFrequency Frequency { get; set; } = GrabFrequency.Default;
 
-    /// <summary>Whether this grabber has been given anything to collect beyond animal products.</summary>
+    /// <summary>Whether this grabber has been given anything to collect beyond what vanilla already gives it.</summary>
     public bool HasExtraTargets => this.TargetIds.Count > 0;
 
     /// <summary>Read the settings stored on a grabber.</summary>
@@ -59,7 +61,12 @@ internal sealed class GrabberSettings
             settings.Scope = parsedScope;
 
         if (grabber.modData.TryGetValue(GrabberSettings.LocationsKey, out string? locations))
-            settings.SelectedLocations.UnionWith(GrabberSettings.Split(locations));
+        {
+            // Settings saved before buildings were grouped hold a tier ("Deluxe Coop"). Folding those
+            // onto the family key keeps the tick working, and widens it to the small coops as well --
+            // which is what the grouped row now means anyway.
+            settings.SelectedLocations.UnionWith(GrabberSettings.Split(locations).Select(GrabberSettings.RootBuildingType));
+        }
 
         if (grabber.modData.TryGetValue(GrabberSettings.FrequencyKey, out string? frequency) && Enum.TryParse(frequency, out GrabFrequency parsedFrequency))
             settings.Frequency = parsedFrequency;
@@ -103,11 +110,66 @@ internal sealed class GrabberSettings
             case ScopeMode.Selected:
                 foreach (GameLocation location in GrabberSettings.AllLocations())
                 {
-                    if (this.SelectedLocations.Contains(location.Name) && GrabberSettings.IsHarvestable(location, config))
+                    if (this.SelectedLocations.Contains(GrabberSettings.SelectionKey(location)) && GrabberSettings.IsHarvestable(location, config))
                         yield return location;
                 }
                 break;
         }
+    }
+
+    /// <summary>Get the key a location is ticked under on the scope tab.</summary>
+    /// <remarks>
+    ///   Building interiors are keyed by the family they belong to rather than by the building, so one
+    ///   "Coop" row covers every coop you own at any tier. The game gives each interior a unique ID, but
+    ///   nothing a player would recognise to label it with, so a row per building would have to read as
+    ///   <c>Coop4cb0a4d1-3f8b-49c9-a375-eb8251426524</c>.
+    /// </remarks>
+    public static string SelectionKey(GameLocation location)
+    {
+        string? buildingType = location.ParentBuilding?.buildingType.Value;
+        return buildingType != null
+            ? GrabberSettings.RootBuildingType(buildingType)
+            : location.Name;
+    }
+
+    /// <summary>Get the name shown for a location's row on the scope tab.</summary>
+    public static string SelectionName(GameLocation location)
+    {
+        // A building interior has no display name of its own, so GameLocation.DisplayName falls through
+        // to the farm's -- every coop and barn would read as "<your farm> Farm". The building's own data
+        // is where the readable name is.
+        if (location.ParentBuilding != null && Game1.buildingData.TryGetValue(GrabberSettings.SelectionKey(location), out BuildingData? data))
+        {
+            string? name = TokenParser.ParseText(data.Name);
+            if (!string.IsNullOrWhiteSpace(name))
+                return name;
+        }
+
+        return string.IsNullOrWhiteSpace(location.DisplayName) ? location.Name : location.DisplayName;
+    }
+
+    /// <summary>Walk a building type back to the one it was first built as, so every tier shares a key.</summary>
+    /// <remarks>
+    ///   <c>BuildingData.BuildingToUpgrade</c> is what links the tiers: a Deluxe Coop upgrades from a Big
+    ///   Coop, which upgrades from a Coop. Following it is data-driven, so a content pack that adds a
+    ///   fourth coop tier joins the same row without being listed anywhere here.
+    /// </remarks>
+    public static string RootBuildingType(string buildingType)
+    {
+        HashSet<string> seen = new() { buildingType };
+
+        while (Game1.buildingData != null && Game1.buildingData.TryGetValue(buildingType, out BuildingData? data))
+        {
+            string? parent = data.BuildingToUpgrade;
+
+            // seen guards against a content pack declaring a cycle, which would otherwise hang the game
+            if (string.IsNullOrWhiteSpace(parent) || !seen.Add(parent))
+                break;
+
+            buildingType = parent;
+        }
+
+        return buildingType;
     }
 
     /// <summary>Get every loaded location, including building interiors.</summary>

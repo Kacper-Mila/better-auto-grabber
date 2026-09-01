@@ -92,13 +92,13 @@ internal sealed class ModEntry : Mod
     {
         this.DailyTally.Clear();
         this.FullGrabbers.Clear();
-        this.RunGrabbers(GrabFrequency.Daily);
+        this.RunGrabbers(atDayStart: true);
     }
 
     /// <summary>Run the grabbers that are due this in-game clock tick.</summary>
     private void OnTimeChanged(object? sender, TimeChangedEventArgs e)
     {
-        this.RunGrabbers(null);
+        this.RunGrabbers(atDayStart: false);
     }
 
     /// <summary>Report what the grabbers collected today.</summary>
@@ -225,8 +225,8 @@ internal sealed class ModEntry : Mod
     ** Harvesting
     *********/
     /// <summary>Run every grabber that's due.</summary>
-    /// <param name="trigger">The frequency being triggered, or <c>null</c> for the ten-minute clock tick.</param>
-    private void RunGrabbers(GrabFrequency? trigger)
+    /// <param name="atDayStart">Whether this is the pass that runs as the day begins, rather than a clock tick.</param>
+    private void RunGrabbers(bool atDayStart)
     {
         // harvesting changes the world, so only the host does it; farmhands would each collect a copy
         if (!Context.IsWorldReady || !Context.IsMainPlayer)
@@ -235,7 +235,7 @@ internal sealed class ModEntry : Mod
         foreach ((GameLocation home, Object grabber) in ModEntry.FindGrabbers())
         {
             GrabberSettings settings = GrabberSettings.Load(grabber);
-            if (!settings.HasExtraTargets || !this.IsDue(settings, trigger))
+            if (!settings.HasExtraTargets || !this.IsDue(settings, atDayStart))
                 continue;
 
             // Every grabber sweeps everywhere it reaches. Two grabbers can't collect the same item:
@@ -354,17 +354,20 @@ internal sealed class ModEntry : Mod
     }
 
     /// <summary>Get whether a grabber should run now.</summary>
-    private bool IsDue(GrabberSettings settings, GrabFrequency? trigger)
+    private bool IsDue(GrabberSettings settings, bool atDayStart)
     {
+        // Every grabber runs once as the day begins, whatever its interval. This is the pass that
+        // matters most -- it's when the eggs are on the coop floor and the cows are still indoors --
+        // and a four-hourly grabber would otherwise first run at 8am, two hours after you wake up.
+        if (atDayStart)
+            return true;
+
         GrabFrequency frequency = settings.Frequency == GrabFrequency.Default
             ? this.Config.DefaultFrequency
             : settings.Frequency;
 
         if (frequency == GrabFrequency.Default)
             frequency = GrabFrequency.Hourly;
-
-        if (trigger == GrabFrequency.Daily)
-            return frequency == GrabFrequency.Daily;
 
         return frequency switch
         {

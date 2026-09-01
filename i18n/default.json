@@ -8,6 +8,7 @@
     "target.artifact-spot": "Artifact Spot",
     "target.seed-spot": "Seed Spot",
     "target.shake-trees": "Shake trees",
+    "target.slime-ball": "Slime Ball",
 
     "group.forage": "Forage",
     "group.crops": "Crops",
@@ -16,6 +17,7 @@
     "group.clumps": "Stumps & Boulders",
     "group.digging": "Digging",
     "group.trees": "Trees",
+    "group.animals": "Animals",
     "group.machines": "Machines",
 
     "menu.title": "Auto-Grabber",
@@ -26,7 +28,7 @@
     "menu.uncheck-all": "uncheck all",
     "menu.no-results": "Nothing matches that search.",
     "menu.settings-tooltip": "Choose what this grabber collects",
-    "menu.nothing-selected": "Nothing selected - this grabber collects animal products only.",
+    "menu.nothing-selected": "Nothing selected - this grabber behaves exactly like a stock one.",
     "menu.selected-count": "{{count}} selected",
 
     "scope.local": "This location only",
@@ -37,6 +39,7 @@
     "scope.selected.desc": "pick them below",
     "scope.frequency": "Runs",
     "scope.unvisited-note": "not visited yet",
+    "scope.building-count": "all {{count}}",
 
     "frequency.default": "mod default",
     "frequency.ten-minutes": "every 10 minutes",
