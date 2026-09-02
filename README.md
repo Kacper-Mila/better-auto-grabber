@@ -15,7 +15,8 @@ the **!** button on the right edge of the menu.
 **What to grab** is a searchable list of everything the grabber may take, with each row showing what
 the grabber actually interacts with. Forage, crops and fruit are listed as the item itself. A large
 log is listed as the log, because "hardwood" doesn't say where it should come from. Machines are
-listed by machine. Nothing is ticked by default.
+listed by machine. Nothing is ticked by default. Searching matches row names and group names, so
+typing "animal" lists the whole Animals group rather than nothing.
 
 **Where from** sets the grabber's reach:
 

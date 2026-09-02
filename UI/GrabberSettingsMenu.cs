@@ -322,9 +322,15 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
 
         foreach (TargetGroup group in Enum.GetValues<TargetGroup>())
         {
+            // Typing a group's name lists the whole group. Nothing in Animals is called "animal", so
+            // matching only row names would leave the most obvious search anyone tries returning
+            // nothing at all.
+            bool groupMatches = search.Length > 0
+                && GrabberSettingsMenu.GroupName(group).Contains(search, StringComparison.CurrentCultureIgnoreCase);
+
             List<HarvestTarget> matches = TargetCatalog.All
                 .Where(target => target.Group == group)
-                .Where(target => search.Length == 0 || target.DisplayName.Contains(search, StringComparison.CurrentCultureIgnoreCase))
+                .Where(target => search.Length == 0 || groupMatches || target.DisplayName.Contains(search, StringComparison.CurrentCultureIgnoreCase))
                 .ToList();
 
             if (matches.Count == 0)
