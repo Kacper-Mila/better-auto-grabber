@@ -10,6 +10,7 @@ internal enum TargetGroup
     Clumps,
     Digging,
     Trees,
+    TrashCans,
     Animals,
     Machines
 }

@@ -9,6 +9,7 @@
     "target.seed-spot": "Seed Spot",
     "target.shake-trees": "Shake trees",
     "target.slime-ball": "Slime Ball",
+    "target.trash-can": "Trash Can",
 
     "group.forage": "Forage",
     "group.crops": "Crops",
@@ -17,6 +18,7 @@
     "group.clumps": "Stumps & Boulders",
     "group.digging": "Digging",
     "group.trees": "Trees",
+    "group.trash-cans": "Trash Cans",
     "group.animals": "Animals",
     "group.machines": "Machines",
 

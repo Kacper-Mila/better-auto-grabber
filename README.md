@@ -42,16 +42,40 @@ tier added by a content pack joins the Coop row on its own.
 grabber also runs once as the day begins whatever its interval, so you wake up to a grabber that has
 already done its morning round.
 
+It runs at two other moments regardless of its interval: when you close its settings page, and when you
+put down a grabber that already has rows ticked. Otherwise the first pass after ticking a row would be
+whenever the interval next came round - the next whole hour by default, and not until tomorrow morning
+on a daily one — which reads a lot like nothing happened.
+
 ## What it can collect
 
 Forage, crops (including indoor pots), fruit trees, berry and tea bushes, large stumps and logs,
-boulders and meteorites, artifact and seed spots, tree shaking, animal products, and machines.
+boulders and meteorites, artifact and seed spots, tree shaking, trash cans, animal products, and
+machines.
 
 Two deliberate omissions:
 
 - **Giant crops** are never harvested. Plenty of people grow them as decoration, and felling one is
   destructive in a way nothing else on the list is.
 - **Golden walnut bushes** aren't collectable.
+
+### Trash cans
+
+The **Trash Cans** group is one row, and it rummages every trash can in the locations the grabber
+reaches — the eight around town, plus any a content pack has added, since they're found by reading the
+map rather than from a list. There's no row per can: the game's own IDs for them are internal handles
+like `JodiAndKent`, and which cans a grabber reaches is the scope tab's job anyway. A grabber sitting
+on the farm won't touch them; one set to *Everywhere I've been*, or with Town ticked under *Chosen
+locations*, will.
+
+Worth knowing before you tick it: **a can can only be searched once a day, by anyone.** This is the
+one target that takes something off your own to-do list — if a grabber gets to the cans first, they're
+empty when you walk past. The roll is the game's own, so daily luck and the Trash Book still apply, and
+what would have come out is what lands in the grabber.
+
+Nobody gets upset about it, either. Searching a can by hand costs you 25 friendship with whoever is
+standing nearby and gets announced in chat; a grabber doesn't make the walk and isn't seen doing it,
+the same reasoning that keeps milking from earning friendship.
 
 ### Animal products
 

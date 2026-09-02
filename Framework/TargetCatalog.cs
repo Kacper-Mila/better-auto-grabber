@@ -58,6 +58,9 @@ internal static class TargetCatalog
     /// <summary>The target ID for shaking wild trees.</summary>
     public const string ShakeTreesId = "tree:shake";
 
+    /// <summary>The target ID for rummaging in trash cans.</summary>
+    public const string TrashCanId = "trash:can";
+
     /// <summary>Build the target ID for an animal product.</summary>
     public static string AnimalId(string qualifiedItemId) => "animal:" + qualifiedItemId;
 
@@ -98,6 +101,7 @@ internal static class TargetCatalog
         TargetCatalog.AddClumps();
         TargetCatalog.AddDigging();
         TargetCatalog.AddTrees();
+        TargetCatalog.AddTrashCans();
         TargetCatalog.AddAnimals();
         TargetCatalog.AddMachines();
 
@@ -192,6 +196,18 @@ internal static class TargetCatalog
     private static void AddTrees()
     {
         TargetCatalog.Add(TargetCatalog.ShakeTreesId, I18n.Target_ShakeTrees(), TargetGroup.Trees, "(O)309");
+    }
+
+    /// <summary>Add the row for rummaging in trash cans.</summary>
+    /// <remarks>
+    ///   One row rather than one per can, for the same reasons the scope tab lists building families
+    ///   rather than buildings: <c>Data/GarbageCans</c> keys are internal handles (<c>JodiAndKent</c>,
+    ///   <c>Mayor</c>) with nothing to label a row with, and the yield is a random roll either way.
+    ///   Which cans a grabber reaches is the scope tab's job, not this list's.
+    /// </remarks>
+    private static void AddTrashCans()
+    {
+        TargetCatalog.Add(TargetCatalog.TrashCanId, I18n.Target_TrashCan(), TargetGroup.TrashCans, "(O)168");
     }
 
     /// <summary>Add a row for every item a farm animal produces.</summary>

@@ -10,6 +10,8 @@ using StardewValley.GameData.Machines;
 using StardewValley.Objects;
 using StardewValley.TerrainFeatures;
 using StardewValley.Tools;
+using xTile.Layers;
+using xTile.Tiles;
 using Object = StardewValley.Object;
 
 namespace BetterAutoGrabber.Framework;
@@ -20,6 +22,9 @@ internal sealed class HarvestEngine
     private readonly ModConfig Config;
     private readonly IMonitor Monitor;
     private readonly GrabberHarvester Harvester = new();
+
+    /// <summary>The garbage cans found on each location's map, keyed by location, cached for the day.</summary>
+    private readonly Dictionary<string, List<(Vector2 Tile, string Id)>> TrashCansByLocation = new();
 
     public HarvestEngine(ModConfig config, IMonitor monitor)
     {
@@ -59,6 +64,7 @@ internal sealed class HarvestEngine
                 this.SweepResourceClumps(location, settings, output);
                 this.SweepDigSpots(location, settings, output);
                 this.SweepTrees(location, settings, output);
+                this.SweepTrashCans(location, settings, output);
                 this.SweepMachines(location, settings, output);
             }
             catch (Exception ex)
@@ -68,6 +74,13 @@ internal sealed class HarvestEngine
         }
 
         return report;
+    }
+
+    /// <summary>Drop anything cached for one day, before the first pass of the next one.</summary>
+    /// <remarks>Maps are swapped out by season and rewritten by content packs between days.</remarks>
+    public void ClearDailyCaches()
+    {
+        this.TrashCansByLocation.Clear();
     }
 
     /*********
@@ -567,6 +580,123 @@ internal sealed class HarvestEngine
 
             this.CaptureDebris(location, output, tile, () => tree.shake(tile, doEvenIfStillShaking: false));
         }
+    }
+
+    /*********
+    ** Trash cans
+    *********/
+    /// <summary>Rummage in the location's trash cans for whatever the day's roll gives.</summary>
+    /// <remarks>
+    ///   This doesn't call <c>GameLocation.CheckGarbage</c>. Even with its animations and NPC reactions
+    ///   turned off, its last step hands the item to <c>Farmer.addItemByMenuIfNecessary</c> whenever the
+    ///   data entry sets <c>AddToInventoryDirectly</c> -- which would drop it in the host's pockets, or
+    ///   pop an item grab menu mid-pass, instead of putting it in the grabber. So the pass does what
+    ///   CheckGarbage does around that step: mark the can checked, roll it, count it.
+    ///
+    ///   No NPC reactions either. Vanilla costs the player 25 friendship with whoever is standing nearby
+    ///   and announces it in chat, on the same reasoning as the milk pail's +5: it's payment for walking
+    ///   over and being seen doing it, and a grabber did neither.
+    /// </remarks>
+    private void SweepTrashCans(GameLocation location, GrabberSettings settings, GrabberOutput output)
+    {
+        if (!settings.TargetIds.Contains(TargetCatalog.TrashCanId))
+            return;
+
+        ISet<string> checkedToday = Game1.netWorldState.Value.CheckedGarbage;
+        foreach ((Vector2 tile, string id) in this.GetTrashCans(location))
+        {
+            // Bail before rolling rather than after. TryGetGarbageItem doesn't touch the world, so a
+            // grabber with no room leaves the can exactly as it found it and the player can still check it.
+            if (output.IsFull)
+                return;
+
+            if (checkedToday.Contains(id))
+                continue;
+
+            location.TryGetGarbageItem(
+                id,
+                Game1.player.DailyLuck,
+                out Item? item,
+                out _,
+                out _,
+                error => this.Monitor.Log($"Ignored invalid garbage can '{id}' in '{location.NameOrUniqueName}': {error}.", LogLevel.Warn)
+            );
+
+            // The can is used up either way, exactly as vanilla does it. The roll is seeded by the day
+            // and the can's ID, so a can that came up empty here would have come up empty for the player.
+            checkedToday.Add(id);
+            Game1.stats.Increment("trashCansChecked");
+
+            if (item != null)
+                output.Deposit(item, location, tile);
+        }
+    }
+
+    /// <summary>Find the garbage cans on a location's map, caching the answer for the rest of the day.</summary>
+    /// <remarks>
+    ///   A trash can isn't an object or a terrain feature -- it's an <c>Action Garbage &lt;id&gt;</c> tile
+    ///   property on the Buildings layer, so the only way to find one is to sweep the layer.
+    ///
+    ///   Which of the two map accessors this uses matters. <see cref="GameLocation.Map" /> calls
+    ///   <c>updateMap</c>, loading the map if it isn't in memory yet; the <c>map</c> field doesn't. Somewhere
+    ///   the player has already been is loaded during an ordinary day anyway, so forcing it there costs
+    ///   nothing and is the only way a grabber can find cans before the player next walks past them.
+    ///   Somewhere they haven't been is left alone rather than paged in for a grabber's sake.
+    /// </remarks>
+    private List<(Vector2 Tile, string Id)> GetTrashCans(GameLocation location)
+    {
+        if (this.TrashCansByLocation.TryGetValue(location.NameOrUniqueName, out List<(Vector2, string)>? cached))
+            return cached;
+
+        Layer? layer = (GrabberSettings.HasVisited(location) ? location.Map : location.map)?.GetLayer("Buildings");
+        if (layer == null)
+            return new List<(Vector2, string)>();  // not cached: the map may well be loaded by the next pass
+
+        List<(Vector2 Tile, string Id)> cans = new();
+        for (int x = 0; x < layer.LayerWidth; x++)
+        {
+            for (int y = 0; y < layer.LayerHeight; y++)
+            {
+                Tile? tile = layer.Tiles[x, y];
+                if (tile == null)
+                    continue;
+
+                // tile properties win over tilesheet ones, the same order the game reads them in
+                if (!tile.Properties.TryGetValue("Action", out string action) && !tile.TileIndexProperties.TryGetValue("Action", out action))
+                    continue;
+
+                string[] parts = ArgUtility.SplitBySpace(action);
+                if (ArgUtility.Get(parts, 0) != "Garbage" || !ArgUtility.TryGet(parts, 1, out string id, out _, allowBlank: false))
+                    continue;
+
+                cans.Add((new Vector2(x, y), HarvestEngine.NormalizeTrashCanId(id)));
+            }
+        }
+
+        this.TrashCansByLocation[location.NameOrUniqueName] = cans;
+        return cans;
+    }
+
+    /// <summary>Get the ID a garbage can is tracked under in <c>NetWorldState.CheckedGarbage</c>.</summary>
+    /// <remarks>
+    ///   Maps written before 1.6 number their cans, and <c>CheckGarbage</c> renames those before touching
+    ///   the checked set. Skipping this would file a can under "0" while the player's own check files the
+    ///   same can under "JodiAndKent", so both would pay out.
+    /// </remarks>
+    private static string NormalizeTrashCanId(string id)
+    {
+        return id switch
+        {
+            "0" => "JodiAndKent",
+            "1" => "EmilyAndHaley",
+            "2" => "Mayor",
+            "3" => "Museum",
+            "4" => "Blacksmith",
+            "5" => "Saloon",
+            "6" => "Evelyn",
+            "7" => "JojaMart",
+            _ => id
+        };
     }
 
     /*********

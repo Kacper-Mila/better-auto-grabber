@@ -17,6 +17,12 @@ namespace BetterAutoGrabber.UI;
 internal sealed class GrabberSettingsMenu : IClickableMenu
 {
     /*********
+    ** Accessors
+    *********/
+    /// <summary>The grabber this page is configuring, so it can be harvested as soon as the page closes.</summary>
+    public Object ConfiguredGrabber => this.Grabber;
+
+    /*********
     ** Fields
     *********/
     private const int RowHeight = 56;
@@ -567,6 +573,7 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
             TargetGroup.Clumps => I18n.Group_Clumps(),
             TargetGroup.Digging => I18n.Group_Digging(),
             TargetGroup.Trees => I18n.Group_Trees(),
+            TargetGroup.TrashCans => I18n.Group_TrashCans(),
             TargetGroup.Animals => I18n.Group_Animals(),
             _ => I18n.Group_Machines()
         };
