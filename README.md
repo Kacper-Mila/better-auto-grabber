@@ -39,6 +39,8 @@ recognise — a per-building list would have to label its rows `Coop4cb0a4d1-3f8
 — so the useful thing to offer is the family. The rows follow each building's upgrade chain, so a coop
 tier added by a content pack joins the Coop row on its own.
 
+**How it runs** is the third tab, holding the two settings that are about neither what nor where.
+
 **Runs** sets how often this grabber works, or leaves it following the mod-wide default. Every
 grabber also runs once as the day begins whatever its interval, so you wake up to a grabber that has
 already done its morning round.
@@ -47,6 +49,20 @@ It runs at two other moments regardless of its interval: when you close its sett
 put down a grabber that already has rows ticked. Otherwise the first pass after ticking a row would be
 whenever the interval next came round - the next whole hour by default, and not until tomorrow morning
 on a daily one — which reads a lot like nothing happened.
+
+**Replant crops** decides what a grabber puts back in the soil it just harvested, using only seeds
+kept in the grabber itself:
+
+| Setting | Meaning |
+|---|---|
+| never | Leave the soil empty. This is the default |
+| with matching seed | Replant the crop that was harvested, when its seed is in the grabber |
+| with any seed | Replant the harvested crop, or fall back to any other seed in the grabber |
+
+The crop's own seed is always tried first, so **with any seed** is about keeping soil in use once the
+right seed runs out, not about turning a parsnip field into whatever else was in the box. A seed is
+only planted where you could have planted it yourself: right season, right location, and only into
+empty soil.
 
 ## What it can collect
 
@@ -145,7 +161,6 @@ Edit `config.json` or use [Generic Mod Config Menu](https://www.nexusmods.com/st
 | `DefaultFrequency` | `Hourly` | How often grabbers run unless one overrides it |
 | `RespectToolRequirements` | `true` | Large stumps need a copper axe, logs a steel axe, and so on |
 | `GrantExperience` | `true` | Grant the skill experience harvesting by hand would give |
-| `ReplantCrops` | `true` | Replant a harvested crop when its seeds are in the grabber |
 | `SkipFestivalLocations` | `true` | Leave festival and event maps alone |
 | `DailySummary` | `true` | Report each day what the grabbers collected |
 | `VerboseLogging` | `false` | Log every pass in detail (see below) |

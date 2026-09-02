@@ -25,6 +25,7 @@
     "menu.title": "Auto-Grabber",
     "menu.tab.targets": "What to grab",
     "menu.tab.scope": "Where from",
+    "menu.tab.behaviour": "How it runs",
     "menu.search-hint": "Search...",
     "menu.check-all": "check all",
     "menu.uncheck-all": "uncheck all",
@@ -39,9 +40,11 @@
     "scope.global.desc": "every visited location",
     "scope.selected": "Chosen locations",
     "scope.selected.desc": "pick them below",
-    "scope.frequency": "Runs",
     "scope.unvisited-note": "not visited yet",
     "scope.building-count": "all {{count}}",
+
+    "behaviour.frequency": "Runs",
+    "behaviour.replant": "Replant crops",
 
     "frequency.default": "mod default",
     "frequency.ten-minutes": "every 10 minutes",
@@ -49,13 +52,16 @@
     "frequency.four-hours": "every 4 hours",
     "frequency.daily": "once a day",
 
+    "replant.never": "never",
+    "replant.matching-seed": "with matching seed",
+    "replant.any-seed": "with any seed",
+
     "summary.header": "Auto-grabbers collected today:",
     "summary.line": "{{location}}: {{count}} item(s)",
     "summary.full": "The auto-grabber in {{location}} is full.",
 
     "config.respect-tools": "Respect tool requirements",
     "config.grant-xp": "Grant experience",
-    "config.replant": "Replant harvested crops",
     "config.skip-festivals": "Skip festival locations",
     "config.daily-summary": "Daily summary",
     "config.verbose-logging": "Verbose logging",

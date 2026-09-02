@@ -13,6 +13,19 @@ using Object = StardewValley.Object;
 
 namespace BetterAutoGrabber.UI;
 
+/// <summary>Which page of the grabber's settings is showing.</summary>
+internal enum MenuTab
+{
+    /// <summary>What the grabber collects.</summary>
+    Targets,
+
+    /// <summary>Which locations it reaches.</summary>
+    Scope,
+
+    /// <summary>How it runs: its interval, and what it replants.</summary>
+    Behaviour
+}
+
 /// <summary>The settings page for one placed auto-grabber.</summary>
 internal sealed class GrabberSettingsMenu : IClickableMenu
 {
@@ -38,23 +51,24 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
 
     private readonly ClickableComponent TargetsTab;
     private readonly ClickableComponent ScopeTab;
+    private readonly ClickableComponent BehaviourTab;
     private readonly ClickableTextureComponent ScrollUp;
     private readonly ClickableTextureComponent ScrollDown;
     private readonly TextBox SearchBox;
 
     private readonly List<ListRow> Rows = new();
-    private bool ShowingScope;
+    private MenuTab Tab = MenuTab.Targets;
     private int ScrollIndex;
     private string LastSearch = "";
 
     /// <summary>Where the mouse is, for drawing hover states.</summary>
     private Point Hover;
 
-    /// <summary>The frequency dropdown's closed bounds, or empty when its row isn't on screen.</summary>
-    private Rectangle DropdownBounds;
+    /// <summary>Where each visible dropdown row's closed box sits, by row index. Rebuilt as the list is drawn.</summary>
+    private readonly Dictionary<int, Rectangle> DropdownBounds = new();
 
-    /// <summary>Whether the frequency dropdown is showing its options.</summary>
-    private bool DropdownOpen;
+    /// <summary>The row index of the dropdown showing its options, or -1 when none is open.</summary>
+    private int OpenDropdown = -1;
 
     /// <summary>The frequencies a grabber can be set to, in the order they're listed.</summary>
     private static readonly GrabFrequency[] Frequencies =
@@ -66,8 +80,27 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
         GrabFrequency.Daily
     };
 
+    /// <summary>The replanting modes a grabber can be set to, in the order they're listed.</summary>
+    private static readonly ReplantMode[] ReplantModes =
+    {
+        ReplantMode.Never,
+        ReplantMode.MatchingSeed,
+        ReplantMode.AnySeed
+    };
+
+    /// <summary>Whether the current tab has a list long enough to be worth searching.</summary>
+    private bool HasSearchBox => this.Tab != MenuTab.Behaviour;
+
     /// <summary>How many rows fit in the list area.</summary>
     private int VisibleRows => (this.height - this.ListTop() + this.yPositionOnScreen - 80) / GrabberSettingsMenu.RowHeight;
+
+    /// <summary>The tabs across the top of the menu, in the order they're drawn.</summary>
+    private IEnumerable<(ClickableComponent Component, MenuTab Tab)> Tabs()
+    {
+        yield return (this.TargetsTab, MenuTab.Targets);
+        yield return (this.ScopeTab, MenuTab.Scope);
+        yield return (this.BehaviourTab, MenuTab.Behaviour);
+    }
 
     /*********
     ** Public methods
@@ -86,7 +119,8 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
 
         int tabWidth = 200;
         this.TargetsTab = new ClickableComponent(new Rectangle(this.xPositionOnScreen + 32, this.yPositionOnScreen + 72, tabWidth, 48), I18n.Menu_TabTargets());
-        this.ScopeTab = new ClickableComponent(new Rectangle(this.xPositionOnScreen + 32 + tabWidth + 16, this.yPositionOnScreen + 72, tabWidth, 48), I18n.Menu_TabScope());
+        this.ScopeTab = new ClickableComponent(new Rectangle(this.xPositionOnScreen + 32 + (tabWidth + 16), this.yPositionOnScreen + 72, tabWidth, 48), I18n.Menu_TabScope());
+        this.BehaviourTab = new ClickableComponent(new Rectangle(this.xPositionOnScreen + 32 + 2 * (tabWidth + 16), this.yPositionOnScreen + 72, tabWidth, 48), I18n.Menu_TabBehaviour());
 
         this.SearchBox = new TextBox(Game1.content.Load<Texture2D>("LooseSprites\\textBox"), null, Game1.smallFont, Game1.textColor)
         {
@@ -105,16 +139,18 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
     public override void receiveLeftClick(int x, int y, bool playSound = true)
     {
         // the open dropdown covers the rows beneath it, so it gets first refusal on the click
-        if (this.DropdownOpen)
+        if (this.OpenDropdown >= 0)
         {
-            this.DropdownOpen = false;
+            ListRow open = this.Rows[this.OpenDropdown];
+            int row = this.OpenDropdown;
+            this.OpenDropdown = -1;
 
-            for (int i = 0; i < GrabberSettingsMenu.Frequencies.Length; i++)
+            for (int i = 0; i < open.DropdownOptions!.Length; i++)
             {
-                if (!this.DropdownOptionBounds(i).Contains(x, y))
+                if (!this.DropdownOptionBounds(row, i).Contains(x, y))
                     continue;
 
-                this.Settings.Frequency = GrabberSettingsMenu.Frequencies[i];
+                open.DropdownSelect(i);
                 this.Settings.Save(this.Grabber);
                 Game1.playSound("drumkit6");
                 this.BuildRows();
@@ -125,28 +161,28 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
             return;
         }
 
-        if (!this.DropdownBounds.IsEmpty && this.DropdownBounds.Contains(x, y))
+        foreach ((int row, Rectangle bounds) in this.DropdownBounds)
         {
-            this.DropdownOpen = true;
-            Game1.playSound("shwip");
-            return;
+            if (bounds.Contains(x, y))
+            {
+                this.OpenDropdown = row;
+                Game1.playSound("shwip");
+                return;
+            }
         }
 
         base.receiveLeftClick(x, y, playSound);
 
-        if (this.TargetsTab.containsPoint(x, y) && this.ShowingScope)
+        foreach ((ClickableComponent component, MenuTab tab) in this.Tabs())
         {
-            this.SwitchTab(showScope: false);
-            return;
+            if (component.containsPoint(x, y) && this.Tab != tab)
+            {
+                this.SwitchTab(tab);
+                return;
+            }
         }
 
-        if (this.ScopeTab.containsPoint(x, y) && !this.ShowingScope)
-        {
-            this.SwitchTab(showScope: true);
-            return;
-        }
-
-        if (this.SearchBox.Y <= y && y <= this.SearchBox.Y + 48 && this.SearchBox.X <= x && x <= this.SearchBox.X + this.SearchBox.Width)
+        if (this.HasSearchBox && this.SearchBox.Y <= y && y <= this.SearchBox.Y + 48 && this.SearchBox.X <= x && x <= this.SearchBox.X + this.SearchBox.Width)
         {
             this.SearchBox.SelectMe();
             return;
@@ -173,6 +209,14 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
             if (row.Greyed)
                 return;
 
+            // clicking a dropdown's label opens it, not just the box on the right
+            if (row.IsDropdown)
+            {
+                this.OpenDropdown = index;
+                Game1.playSound("shwip");
+                return;
+            }
+
             row.Toggle();
             this.Settings.Save(this.Grabber);
             Game1.playSound("drumkit6");
@@ -192,7 +236,7 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
     /// <inheritdoc />
     public override void receiveScrollWheelAction(int direction)
     {
-        this.DropdownOpen = false;
+        this.OpenDropdown = -1;
         this.Scroll(direction > 0 ? -1 : 1);
     }
 
@@ -217,7 +261,7 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
     {
         base.update(time);
 
-        if (this.SearchBox.Text != this.LastSearch)
+        if (this.HasSearchBox && this.SearchBox.Text != this.LastSearch)
         {
             this.LastSearch = this.SearchBox.Text;
             this.ScrollIndex = 0;
@@ -233,18 +277,22 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
 
         SpriteText.drawString(b, I18n.Menu_Title(), this.xPositionOnScreen + 32, this.yPositionOnScreen + 24);
 
-        this.DrawTab(b, this.TargetsTab, !this.ShowingScope);
-        this.DrawTab(b, this.ScopeTab, this.ShowingScope);
+        foreach ((ClickableComponent component, MenuTab tab) in this.Tabs())
+            this.DrawTab(b, component, this.Tab == tab);
 
-        this.SearchBox.Draw(b);
-        if (string.IsNullOrEmpty(this.SearchBox.Text) && !this.SearchBox.Selected)
-            Utility.drawTextWithShadow(b, I18n.Menu_SearchHint(), Game1.smallFont, new Vector2(this.SearchBox.X + 16, this.SearchBox.Y + 12), Game1.textColor * 0.5f);
+        // the behaviour tab is two dropdowns, with nothing a search could narrow down
+        if (this.HasSearchBox)
+        {
+            this.SearchBox.Draw(b);
+            if (string.IsNullOrEmpty(this.SearchBox.Text) && !this.SearchBox.Selected)
+                Utility.drawTextWithShadow(b, I18n.Menu_SearchHint(), Game1.smallFont, new Vector2(this.SearchBox.X + 16, this.SearchBox.Y + 12), Game1.textColor * 0.5f);
+        }
 
         this.DrawRows(b);
 
         Utility.drawTextWithShadow(b, this.FooterText(), Game1.smallFont, new Vector2(this.xPositionOnScreen + 32, this.yPositionOnScreen + this.height - 68), Game1.textColor);
 
-        if (this.DropdownOpen && !this.DropdownBounds.IsEmpty)
+        if (this.OpenDropdown >= 0 && this.DropdownBounds.ContainsKey(this.OpenDropdown))
             this.DrawDropdownOptions(b);
 
         if (this.ScrollIndex > 0)
@@ -259,8 +307,8 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
     /*********
     ** Private methods
     *********/
-    /// <summary>Get the top of the scrolling list area.</summary>
-    private int ListTop() => this.yPositionOnScreen + 200;
+    /// <summary>Get the top of the scrolling list area, which rises into the space a hidden search box leaves.</summary>
+    private int ListTop() => this.yPositionOnScreen + (this.HasSearchBox ? 200 : 144);
 
     /// <summary>Get the row index under a screen position, or -1.</summary>
     private int RowIndexAt(int y)
@@ -273,13 +321,14 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
         return row >= this.VisibleRows ? -1 : this.ScrollIndex + row;
     }
 
-    private void SwitchTab(bool showScope)
+    private void SwitchTab(MenuTab tab)
     {
-        this.DropdownOpen = false;
-        this.ShowingScope = showScope;
+        this.OpenDropdown = -1;
+        this.Tab = tab;
         this.ScrollIndex = 0;
         this.SearchBox.Text = "";
         this.LastSearch = "";
+        this.SearchBox.Selected = false;
         this.BuildRows();
         Game1.playSound("smallSelect");
     }
@@ -306,11 +355,22 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
     private void BuildRows()
     {
         this.Rows.Clear();
+        this.OpenDropdown = -1;
 
-        if (this.ShowingScope)
-            this.BuildScopeRows();
-        else
-            this.BuildTargetRows();
+        switch (this.Tab)
+        {
+            case MenuTab.Scope:
+                this.BuildScopeRows();
+                break;
+
+            case MenuTab.Behaviour:
+                this.BuildBehaviourRows();
+                break;
+
+            default:
+                this.BuildTargetRows();
+                break;
+        }
 
         this.ScrollIndex = Math.Clamp(this.ScrollIndex, 0, Math.Max(0, this.Rows.Count - this.VisibleRows));
     }
@@ -383,16 +443,6 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
         this.AddScopeOption(ScopeMode.Global, I18n.Scope_Global(), I18n.Scope_GlobalDesc());
         this.AddScopeOption(ScopeMode.Selected, I18n.Scope_Selected(), I18n.Scope_SelectedDesc());
 
-        this.Rows.Add(new ListRow
-        {
-            Label = I18n.Scope_Frequency(),
-            IsDropdown = true,
-            Suffix = GrabberSettingsMenu.FrequencyName(this.Settings.Frequency),
-
-            // clicking the label opens it too, not just the dropdown box itself
-            Toggle = () => this.DropdownOpen = true
-        });
-
         if (this.Settings.Scope != ScopeMode.Selected)
             return;
 
@@ -440,6 +490,28 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
         }
     }
 
+    /// <summary>Build the behaviour tab: how often the grabber runs, and what it replants.</summary>
+    private void BuildBehaviourRows()
+    {
+        this.Rows.Add(new ListRow { Label = I18n.Menu_TabBehaviour(), IsHeader = true });
+
+        this.Rows.Add(new ListRow
+        {
+            Label = I18n.Behaviour_Frequency(),
+            DropdownOptions = GrabberSettingsMenu.Frequencies.Select(GrabberSettingsMenu.FrequencyName).ToArray(),
+            DropdownSelected = () => Array.IndexOf(GrabberSettingsMenu.Frequencies, this.Settings.Frequency),
+            DropdownSelect = index => this.Settings.Frequency = GrabberSettingsMenu.Frequencies[index]
+        });
+
+        this.Rows.Add(new ListRow
+        {
+            Label = I18n.Behaviour_Replant(),
+            DropdownOptions = GrabberSettingsMenu.ReplantModes.Select(GrabberSettingsMenu.ReplantName).ToArray(),
+            DropdownSelected = () => Array.IndexOf(GrabberSettingsMenu.ReplantModes, this.Settings.Replant),
+            DropdownSelect = index => this.Settings.Replant = GrabberSettingsMenu.ReplantModes[index]
+        });
+    }
+
     private void AddScopeOption(ScopeMode mode, string label, string description)
     {
         this.Rows.Add(new ListRow
@@ -454,7 +526,7 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
     /// <summary>Draw the visible slice of the row list.</summary>
     private void DrawRows(SpriteBatch b)
     {
-        this.DropdownBounds = Rectangle.Empty;
+        this.DropdownBounds.Clear();
         int y = this.ListTop();
 
         for (int i = this.ScrollIndex; i < this.Rows.Count && i < this.ScrollIndex + this.VisibleRows; i++)
@@ -499,7 +571,7 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
             }
 
             if (row.IsDropdown)
-                this.DrawDropdown(b, row, y);
+                this.DrawDropdown(b, row, i, y);
             else if (row.Suffix != null)
                 this.DrawSuffix(b, row, y);
 
@@ -524,40 +596,53 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
         Utility.drawTextWithShadow(b, row.Suffix, Game1.smallFont, new Vector2(bounds.X + 16, bounds.Y + 6), Game1.textColor);
     }
 
-    /// <summary>Draw the closed dropdown, and remember where it is so clicks can find it.</summary>
-    private void DrawDropdown(SpriteBatch b, ListRow row, int y)
+    /// <summary>Draw a closed dropdown, and remember where it is so clicks can find it.</summary>
+    /// <param name="b">The sprite batch being drawn to.</param>
+    /// <param name="row">The row being drawn.</param>
+    /// <param name="index">The row's index in the list, which is what its bounds are filed under.</param>
+    /// <param name="y">The top of the row on screen.</param>
+    private void DrawDropdown(SpriteBatch b, ListRow row, int index, int y)
     {
-        int width = 260;
-        this.DropdownBounds = new Rectangle(this.xPositionOnScreen + this.width - width - 72, y + 4, width, GrabberSettingsMenu.RowHeight - 16);
+        // wide enough for the longest option any dropdown offers, which is a replanting mode
+        int width = 360;
+        Rectangle bounds = new(this.xPositionOnScreen + this.width - width - 72, y + 4, width, GrabberSettingsMenu.RowHeight - 16);
+        this.DropdownBounds[index] = bounds;
 
-        IClickableMenu.drawTextureBox(b, Game1.mouseCursors, OptionsDropDown.dropDownBGSource, this.DropdownBounds.X, this.DropdownBounds.Y, this.DropdownBounds.Width - 48, this.DropdownBounds.Height, Color.White, 4f, drawShadow: false);
-        b.DrawString(Game1.smallFont, row.Suffix ?? "", new Vector2(this.DropdownBounds.X + 8, this.DropdownBounds.Y + 6), Game1.textColor);
-        b.Draw(Game1.mouseCursors, new Vector2(this.DropdownBounds.Right - 48, this.DropdownBounds.Y), OptionsDropDown.dropDownButtonSource, Color.White, 0f, Vector2.Zero, 4f, SpriteEffects.None, 0.88f);
+        IClickableMenu.drawTextureBox(b, Game1.mouseCursors, OptionsDropDown.dropDownBGSource, bounds.X, bounds.Y, bounds.Width - 48, bounds.Height, Color.White, 4f, drawShadow: false);
+        b.DrawString(Game1.smallFont, row.DropdownOptions![row.DropdownSelected()], new Vector2(bounds.X + 8, bounds.Y + 6), Game1.textColor);
+        b.Draw(Game1.mouseCursors, new Vector2(bounds.Right - 48, bounds.Y), OptionsDropDown.dropDownButtonSource, Color.White, 0f, Vector2.Zero, 4f, SpriteEffects.None, 0.88f);
     }
 
-    /// <summary>Draw the dropdown's options over everything else.</summary>
+    /// <summary>Draw the open dropdown's options over everything else.</summary>
     private void DrawDropdownOptions(SpriteBatch b)
     {
-        Rectangle panel = new(this.DropdownBounds.X, this.DropdownBounds.Y, this.DropdownBounds.Width - 48, this.DropdownBounds.Height * GrabberSettingsMenu.Frequencies.Length);
+        ListRow row = this.Rows[this.OpenDropdown];
+        string[] options = row.DropdownOptions!;
+        Rectangle bounds = this.DropdownBounds[this.OpenDropdown];
+
+        Rectangle panel = new(bounds.X, bounds.Y, bounds.Width - 48, bounds.Height * options.Length);
         IClickableMenu.drawTextureBox(b, Game1.mouseCursors, OptionsDropDown.dropDownBGSource, panel.X, panel.Y, panel.Width, panel.Height, Color.White, 4f, drawShadow: false, 0.97f);
 
-        for (int i = 0; i < GrabberSettingsMenu.Frequencies.Length; i++)
+        for (int i = 0; i < options.Length; i++)
         {
-            Rectangle option = this.DropdownOptionBounds(i);
-            bool highlight = GrabberSettingsMenu.Frequencies[i] == this.Settings.Frequency || option.Contains(this.Hover);
+            Rectangle option = this.DropdownOptionBounds(this.OpenDropdown, i);
+            bool highlight = i == row.DropdownSelected() || option.Contains(this.Hover);
             if (highlight)
                 b.Draw(Game1.staminaRect, new Rectangle(option.X, option.Y, panel.Width, option.Height), new Rectangle(0, 0, 1, 1), Color.Wheat, 0f, Vector2.Zero, SpriteEffects.None, 0.975f);
 
-            b.DrawString(Game1.smallFont, GrabberSettingsMenu.FrequencyName(GrabberSettingsMenu.Frequencies[i]), new Vector2(option.X + 8, option.Y + 6), Game1.textColor, 0f, Vector2.Zero, 1f, SpriteEffects.None, 0.98f);
+            b.DrawString(Game1.smallFont, options[i], new Vector2(option.X + 8, option.Y + 6), Game1.textColor, 0f, Vector2.Zero, 1f, SpriteEffects.None, 0.98f);
         }
 
-        b.Draw(Game1.mouseCursors, new Vector2(this.DropdownBounds.Right - 48, this.DropdownBounds.Y), OptionsDropDown.dropDownButtonSource, Color.Wheat, 0f, Vector2.Zero, 4f, SpriteEffects.None, 0.981f);
+        b.Draw(Game1.mouseCursors, new Vector2(bounds.Right - 48, bounds.Y), OptionsDropDown.dropDownButtonSource, Color.Wheat, 0f, Vector2.Zero, 4f, SpriteEffects.None, 0.981f);
     }
 
-    /// <summary>Get where one of the open dropdown's options sits.</summary>
-    private Rectangle DropdownOptionBounds(int index)
+    /// <summary>Get where one of an open dropdown's options sits.</summary>
+    /// <param name="row">The dropdown row's index in the list.</param>
+    /// <param name="index">The option's index within the dropdown.</param>
+    private Rectangle DropdownOptionBounds(int row, int index)
     {
-        return new Rectangle(this.DropdownBounds.X, this.DropdownBounds.Y + index * this.DropdownBounds.Height, this.DropdownBounds.Width - 48, this.DropdownBounds.Height);
+        Rectangle bounds = this.DropdownBounds[row];
+        return new Rectangle(bounds.X, bounds.Y + index * bounds.Height, bounds.Width - 48, bounds.Height);
     }
 
     private void DrawTab(SpriteBatch b, ClickableComponent tab, bool active)
@@ -582,6 +667,16 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
             TargetGroup.TrashCans => I18n.Group_TrashCans(),
             TargetGroup.Animals => I18n.Group_Animals(),
             _ => I18n.Group_Machines()
+        };
+    }
+
+    private static string ReplantName(ReplantMode mode)
+    {
+        return mode switch
+        {
+            ReplantMode.MatchingSeed => I18n.Replant_MatchingSeed(),
+            ReplantMode.AnySeed => I18n.Replant_AnySeed(),
+            _ => I18n.Replant_Never()
         };
     }
 

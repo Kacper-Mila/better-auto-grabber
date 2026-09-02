@@ -31,9 +31,6 @@ internal sealed class ModConfig
     /// <summary>Whether grabbed items grant the skill experience that harvesting them by hand would.</summary>
     public bool GrantExperience { get; set; } = true;
 
-    /// <summary>Whether to replant a harvested crop when its seeds are in the grabber.</summary>
-    public bool ReplantCrops { get; set; } = true;
-
     /// <summary>Whether to leave festival and other temporary event locations alone.</summary>
     public bool SkipFestivalLocations { get; set; } = true;
 

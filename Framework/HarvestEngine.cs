@@ -290,8 +290,7 @@ internal sealed class HarvestEngine
         if (dirt.crop.harvest((int)tile.X, (int)tile.Y, dirt, this.Harvester))
         {
             dirt.destroyCrop(showAnimation: false);
-            if (this.Config.ReplantCrops)
-                HarvestEngine.TryReplant(dirt, seedId, chest);
+            HarvestEngine.TryReplant(dirt, seedId, chest, settings.Replant);
         }
 
         if (this.Config.GrantExperience)
@@ -310,26 +309,63 @@ internal sealed class HarvestEngine
             : ItemRegistry.QualifyItemId(crop.indexOfHarvest.Value);
     }
 
-    /// <summary>Replant the seed for a harvested crop, if the grabber is holding one.</summary>
-    private static void TryReplant(HoeDirt dirt, string? seedId, Chest chest)
+    /// <summary>Replant the soil a crop was just harvested from, using a seed the grabber is holding.</summary>
+    /// <param name="dirt">The soil the crop came out of.</param>
+    /// <param name="seedId">The seed the harvested crop grew from.</param>
+    /// <param name="chest">The grabber's contents, which is the only place a seed may come from.</param>
+    /// <param name="mode">Which seeds this grabber is allowed to plant.</param>
+    private static void TryReplant(HoeDirt dirt, string? seedId, Chest chest, ReplantMode mode)
     {
-        if (string.IsNullOrWhiteSpace(seedId) || dirt.crop != null)
+        if (mode == ReplantMode.Never || dirt.crop != null)
             return;
 
-        string? qualifiedSeed = ItemRegistry.QualifyItemId(seedId);
-        if (qualifiedSeed == null)
-            return;
+        foreach (Item seed in HarvestEngine.GetReplantSeeds(chest, seedId, mode))
+        {
+            // plant() is what decides whether a seed may go in: it checks the crop data, the soil's own
+            // season and the location's planting rules, and leaves the dirt untouched when it refuses,
+            // so a rejected seed just means trying the next one. canPlantThisSeedHere() looks like the
+            // fitting check, but it tests Game1.currentLocation and the player's own footprint, neither
+            // of which says anything about soil a remote grabber is reaching.
+            if (!dirt.plant(seed.ItemId, Game1.player, isFertilizer: false))
+                continue;
 
-        Item? seed = chest.Items.FirstOrDefault(item => item?.QualifiedItemId == qualifiedSeed);
-        if (seed == null)
+            seed.Stack--;
+            if (seed.Stack <= 0)
+                chest.Items.Remove(seed);
             return;
+        }
+    }
 
-        if (!dirt.plant(seed.ItemId, Game1.player, isFertilizer: false))
-            return;
+    /// <summary>Get the seeds in a grabber that may be replanted, in the order they should be tried.</summary>
+    /// <remarks>
+    ///   The harvested crop's own seed comes first even under <see cref="ReplantMode.AnySeed" />. That
+    ///   mode is there so soil keeps being used once the right seed runs out, not so a parsnip field
+    ///   quietly turns into whatever else was in the box.
+    /// </remarks>
+    private static IEnumerable<Item> GetReplantSeeds(Chest chest, string? seedId, ReplantMode mode)
+    {
+        string? qualifiedSeed = string.IsNullOrWhiteSpace(seedId)
+            ? null
+            : ItemRegistry.QualifyItemId(seedId);
 
-        seed.Stack--;
-        if (seed.Stack <= 0)
-            chest.Items.Remove(seed);
+        Item? matching = qualifiedSeed == null
+            ? null
+            : chest.Items.FirstOrDefault(item => item?.QualifiedItemId == qualifiedSeed);
+
+        if (matching != null)
+            yield return matching;
+
+        if (mode != ReplantMode.AnySeed)
+            yield break;
+
+        // Category rather than a crop-data lookup, because that's what tells a seed apart from the
+        // fertiliser and saplings sharing the box. Mixed Seeds pass, and resolve to something in season
+        // when they're planted, which is the whole point of them.
+        foreach (Item item in chest.Items.ToArray())
+        {
+            if (item != null && item != matching && item.Category == Object.SeedsCategory)
+                yield return item;
+        }
     }
 
     /// <summary>Grant the farming experience the player would have got for harvesting a crop by hand.</summary>

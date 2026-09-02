@@ -443,13 +443,12 @@ internal sealed class ModEntry : Mod
             this.ModManifest,
             () => this.Config.DefaultFrequency.ToString(),
             value => this.Config.DefaultFrequency = Enum.TryParse(value, out GrabFrequency parsed) ? parsed : GrabFrequency.Hourly,
-            () => I18n.Scope_Frequency(),
+            () => I18n.Behaviour_Frequency(),
             allowedValues: new[] { nameof(GrabFrequency.TenMinutes), nameof(GrabFrequency.Hourly), nameof(GrabFrequency.FourHours), nameof(GrabFrequency.Daily) }
         );
 
         api.AddBoolOption(this.ModManifest, () => this.Config.RespectToolRequirements, value => this.Config.RespectToolRequirements = value, () => this.Helper.Translation.Get("config.respect-tools"));
         api.AddBoolOption(this.ModManifest, () => this.Config.GrantExperience, value => this.Config.GrantExperience = value, () => this.Helper.Translation.Get("config.grant-xp"));
-        api.AddBoolOption(this.ModManifest, () => this.Config.ReplantCrops, value => this.Config.ReplantCrops = value, () => this.Helper.Translation.Get("config.replant"));
         api.AddBoolOption(this.ModManifest, () => this.Config.SkipFestivalLocations, value => this.Config.SkipFestivalLocations = value, () => this.Helper.Translation.Get("config.skip-festivals"));
         api.AddBoolOption(this.ModManifest, () => this.Config.DailySummary, value => this.Config.DailySummary = value, () => this.Helper.Translation.Get("config.daily-summary"));
         api.AddBoolOption(this.ModManifest, () => this.Config.VerboseLogging, value => this.Config.VerboseLogging = value, () => this.Helper.Translation.Get("config.verbose-logging"));

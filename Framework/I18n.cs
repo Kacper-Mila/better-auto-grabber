@@ -41,6 +41,7 @@ internal static class I18n
     public static string Menu_Title() => I18n.Get("menu.title");
     public static string Menu_TabTargets() => I18n.Get("menu.tab.targets");
     public static string Menu_TabScope() => I18n.Get("menu.tab.scope");
+    public static string Menu_TabBehaviour() => I18n.Get("menu.tab.behaviour");
     public static string Menu_SearchHint() => I18n.Get("menu.search-hint");
     public static string Menu_CheckAll() => I18n.Get("menu.check-all");
     public static string Menu_UncheckAll() => I18n.Get("menu.uncheck-all");
@@ -55,9 +56,15 @@ internal static class I18n
     public static string Scope_GlobalDesc() => I18n.Get("scope.global.desc");
     public static string Scope_Selected() => I18n.Get("scope.selected");
     public static string Scope_SelectedDesc() => I18n.Get("scope.selected.desc");
-    public static string Scope_Frequency() => I18n.Get("scope.frequency");
     public static string Scope_UnvisitedNote() => I18n.Get("scope.unvisited-note");
     public static string Scope_BuildingCount(int count) => I18n.Get("scope.building-count", new { count });
+
+    public static string Behaviour_Frequency() => I18n.Get("behaviour.frequency");
+    public static string Behaviour_Replant() => I18n.Get("behaviour.replant");
+
+    public static string Replant_Never() => I18n.Get("replant.never");
+    public static string Replant_MatchingSeed() => I18n.Get("replant.matching-seed");
+    public static string Replant_AnySeed() => I18n.Get("replant.any-seed");
 
     public static string Frequency_Default() => I18n.Get("frequency.default");
     public static string Frequency_TenMinutes() => I18n.Get("frequency.ten-minutes");
