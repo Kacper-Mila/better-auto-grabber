@@ -8,7 +8,9 @@ using StardewValley.Extensions;
 using StardewValley.GameData.FarmAnimals;
 using StardewValley.GameData.Machines;
 using StardewValley.Objects;
+using StardewValley.Locations;
 using StardewValley.TerrainFeatures;
+using StardewValley.Tools;
 using xTile.Layers;
 using xTile.Tiles;
 using Object = StardewValley.Object;
@@ -66,6 +68,7 @@ internal sealed class HarvestEngine
                 this.SweepFruitTrees(location, settings, output);
                 this.SweepResourceClumps(location, settings, output);
                 this.SweepDigSpots(location, settings, output);
+                this.SweepPanningSpot(location, settings, output);
                 this.SweepTrees(location, settings, output);
                 this.SweepTrashCans(location, settings, output);
                 this.SweepMachines(location, settings, output);
@@ -591,6 +594,78 @@ internal sealed class HarvestEngine
         }
     }
 
+    /// <summary>Pan the glittering spot in a location's water.</summary>
+    /// <remarks>
+    ///   One spot per location at most: <see cref="GameLocation.orePanPoint"/> holds a single tile, and
+    ///   Point.Zero means there's nothing to pan. Clearing it is what makes the sparkle go away, since
+    ///   the location rebuilds its animation whenever the field changes.
+    /// </remarks>
+    private void SweepPanningSpot(GameLocation location, GrabberSettings settings, GrabberOutput output)
+    {
+        if (output.IsFull || location.orePanPoint.Value == Point.Zero)
+            return;
+
+        if (!settings.TargetIds.Contains(TargetCatalog.PanningSpotId))
+            return;
+
+        if (!this.HasToolFor(TargetCatalog.PanningSpotId))
+        {
+            output.Report.Skip($"{TargetCatalog.Get(TargetCatalog.PanningSpotId)?.DisplayName ?? TargetCatalog.PanningSpotId}: {this.DescribeToolRequirement(TargetCatalog.PanningSpotId)}");
+            return;
+        }
+
+        // The pan itself, not just its level: getPanItems reads its enchantments. With tool
+        // requirements turned off there may not be one to find, so it pans as a plain copper pan.
+        Pan pan = this.Tools.GetTool(ToolKind.Pan) as Pan ?? new Pan(1);
+
+        // The loot is seeded from the spot's own tile, so it has to be rolled before the spot is
+        // cleared. Vanilla's DoFunction hands the items to the player through a menu, which is no use
+        // mid-pass, so only the roll is borrowed and the items go in the chest instead.
+        Vector2 tile = Utility.PointToVector2(location.orePanPoint.Value);
+        List<Item> items = new();
+        this.PreserveExperience(() => items.AddRange(pan.getPanItems(location, Game1.player)));
+
+        location.orePanPoint.Value = Point.Zero;
+
+        Vector2 dropTile = HarvestEngine.NearestDryTile(location, tile);
+        foreach (Item item in items)
+            output.Deposit(item, location, dropTile);
+
+        // An upgraded pan rolls for a fresh spot the moment the old one is worked, which is most of
+        // what the upgrade buys. Copied from Pan.DoFunction, IslandNorth quirk and all.
+        for (int i = 0; i < pan.UpgradeLevel - 1; i++)
+        {
+            if (location.performOrePanTenMinuteUpdate(Game1.random))
+                break;
+            if (Game1.random.NextDouble() < 0.5 && location.performOrePanTenMinuteUpdate(Game1.random) && location is not IslandNorth)
+                break;
+        }
+    }
+
+    /// <summary>Get the tile a full grabber should drop a panned item on.</summary>
+    /// <remarks>
+    ///   The spot itself is open water, where a dropped item is simply gone. A panning spot only ever
+    ///   spawns within one tile of land, so one of the eight neighbours is dry ground to fall back on.
+    ///   Straight neighbours are tried before corners, since that's where the shore usually is.
+    /// </remarks>
+    private static Vector2 NearestDryTile(GameLocation location, Vector2 tile)
+    {
+        Vector2[] offsets =
+        {
+            new(-1, 0), new(1, 0), new(0, -1), new(0, 1),
+            new(-1, -1), new(1, -1), new(-1, 1), new(1, 1)
+        };
+
+        foreach (Vector2 offset in offsets)
+        {
+            Vector2 neighbour = tile + offset;
+            if (location.isTileOnMap(neighbour) && !location.isWaterTile((int)neighbour.X, (int)neighbour.Y))
+                return neighbour;
+        }
+
+        return tile;
+    }
+
     /*********
     ** Trees
     *********/
@@ -854,6 +929,56 @@ internal sealed class HarvestEngine
         }
     }
 
+    /// <summary>Run a harvest step that hands out its own experience, and take it back if the mod is set not to grant any.</summary>
+    /// <param name="action">The step to run.</param>
+    /// <remarks>
+    ///   Every other pass adds experience itself and can simply not do it. Pan.getPanItems grants
+    ///   mining and foraging experience inside the same call that rolls the loot, and takes no flag
+    ///   for it, so honouring GrantExperience means putting the skills back afterwards. Everything
+    ///   Farmer.gainExperience touches is restored: the points, any level it raised, the levels queued
+    ///   for the end-of-day menu, and the mastery total.
+    /// </remarks>
+    private void PreserveExperience(Action action)
+    {
+        if (this.Config.GrantExperience)
+        {
+            action();
+            return;
+        }
+
+        Farmer player = Game1.player;
+        int[] points = new int[player.experiencePoints.Length];
+        for (int i = 0; i < points.Length; i++)
+            points[i] = player.experiencePoints[i];
+
+        int farming = player.farmingLevel.Value;
+        int fishing = player.fishingLevel.Value;
+        int foraging = player.foragingLevel.Value;
+        int mining = player.miningLevel.Value;
+        int combat = player.combatLevel.Value;
+        int luck = player.luckLevel.Value;
+        Point[] queuedLevels = player.newLevels.ToArray();
+        uint mastery = Game1.stats.Get("MasteryExp");
+
+        action();
+
+        for (int i = 0; i < points.Length; i++)
+            player.experiencePoints[i] = points[i];
+
+        player.farmingLevel.Value = farming;
+        player.fishingLevel.Value = fishing;
+        player.foragingLevel.Value = foraging;
+        player.miningLevel.Value = mining;
+        player.combatLevel.Value = combat;
+        player.luckLevel.Value = luck;
+
+        player.newLevels.Clear();
+        foreach (Point level in queuedLevels)
+            player.newLevels.Add(level);
+
+        Game1.stats.Set("MasteryExp", mastery);
+    }
+
     /// <summary>Get whether the player owns the tool vanilla would require for a target.</summary>
     /// <remarks>Ownership, not what's in the backpack: see <see cref="ToolOwnership"/>.</remarks>
     private bool HasToolFor(string targetId)
@@ -864,6 +989,7 @@ internal sealed class HarvestEngine
         return targetId switch
         {
             TargetCatalog.ArtifactSpotId or TargetCatalog.SeedSpotId => this.Tools.GetLevel(ToolKind.Hoe) >= 0,
+            TargetCatalog.PanningSpotId => this.Tools.GetLevel(ToolKind.Pan) >= 0,
             _ when targetId == TargetCatalog.ClumpId(ResourceClump.stumpIndex) => this.Tools.GetLevel(ToolKind.Axe) >= 1,
             _ when targetId == TargetCatalog.ClumpId(ResourceClump.hollowLogIndex) => this.Tools.GetLevel(ToolKind.Axe) >= 2,
             _ when targetId == TargetCatalog.ClumpId(ResourceClump.boulderIndex) => this.Tools.GetLevel(ToolKind.Pickaxe) >= 2,
@@ -878,6 +1004,9 @@ internal sealed class HarvestEngine
     {
         if (targetId == TargetCatalog.ArtifactSpotId || targetId == TargetCatalog.SeedSpotId)
             return "you don't own a hoe";
+
+        if (targetId == TargetCatalog.PanningSpotId)
+            return "you don't own a pan";
 
         if (targetId == TargetCatalog.ClumpId(ResourceClump.stumpIndex))
             return "you don't own a copper axe or better";

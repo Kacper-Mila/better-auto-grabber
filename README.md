@@ -67,14 +67,27 @@ empty soil.
 ## What it can collect
 
 Forage, crops (including indoor pots), fruit trees, berry and tea bushes, large stumps and logs,
-boulders and meteorites, artifact and seed spots, tree shaking, trash cans, animal products, and
-machines.
+boulders and meteorites, artifact and seed spots, panning spots, tree shaking, trash cans, animal
+products, and machines.
 
 Two deliberate omissions:
 
 - **Giant crops** are never harvested. Plenty of people grow them as decoration, and felling one is
   destructive in a way nothing else on the list is.
 - **Golden walnut bushes** aren't collectable.
+
+### Panning spots
+
+**Panning Spot** sits in the **Digging** group, and covers the glittering spot that appears in a
+location's water once the Fish Tank bundle is done. A grabber reaching that location works it with a
+pan and drops the haul in the box, sparkle and all.
+
+The loot is the game's own roll, so your luck, your pan's upgrade level and any enchantment on it all
+count. So does the upgrade's other perk: a steel pan or better rolls for a fresh spot the moment the
+old one is worked, exactly as it does when you pan by hand.
+
+You never have to carry the pan, and it can stay on your head. Most people wear theirs as a hat, which
+is where the ownership check looks first.
 
 ### Trash cans
 
@@ -170,11 +183,12 @@ Edit `config.json` or use [Generic Mod Config Menu](https://www.nexusmods.com/st
 
 With `RespectToolRequirements` on, a grabber only takes what your tools could handle: a copper axe
 for large stumps, a steel axe for hollow logs, a steel pickaxe for boulders, a gold pickaxe for
-meteorites, any hoe for artifact and seed spots.
+meteorites, any hoe for artifact and seed spots, any pan for panning spots.
 
 It counts a tool you **own**, not one you carry. The world is checked once a day, so a pickaxe left
 in a chest at home counts, and so does the tool sitting at Clint's forge during the two days of an
-upgrade, when it belongs to no inventory at all. Picking up a finished upgrade counts straight away.
+upgrade, when it belongs to no inventory at all. A pan worn as a hat counts as a pan. Picking up a
+finished upgrade counts straight away.
 
 Because the game never records the level a tool was upgraded to, the best of each kind seen is
 remembered in your save: once you have owned a gold pickaxe, your grabbers keep mining meteorites

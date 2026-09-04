@@ -23,6 +23,7 @@ internal static class I18n
     public static string Target_MineBoulder() => I18n.Get("target.mine-boulder");
     public static string Target_ArtifactSpot() => I18n.Get("target.artifact-spot");
     public static string Target_SeedSpot() => I18n.Get("target.seed-spot");
+    public static string Target_PanningSpot() => I18n.Get("target.panning-spot");
     public static string Target_ShakeTrees() => I18n.Get("target.shake-trees");
     public static string Target_SlimeBall() => I18n.Get("target.slime-ball");
     public static string Target_TrashCan() => I18n.Get("target.trash-can");

@@ -55,6 +55,9 @@ internal static class TargetCatalog
     /// <summary>The target ID for seed spots.</summary>
     public const string SeedSpotId = "dig:seed";
 
+    /// <summary>The target ID for the glittering panning spot in a location's water.</summary>
+    public const string PanningSpotId = "dig:panning";
+
     /// <summary>The target ID for shaking wild trees.</summary>
     public const string ShakeTreesId = "tree:shake";
 
@@ -180,11 +183,17 @@ internal static class TargetCatalog
         TargetCatalog.Add(TargetCatalog.ClumpId(ResourceClump.mineRock1Index), I18n.Target_MineBoulder(), TargetGroup.Clumps, "(O)390");
     }
 
-    /// <summary>Add a row for each spot that has to be dug up.</summary>
+    /// <summary>Add a row for each spot that has to be worked with a tool for whatever it's hiding.</summary>
+    /// <remarks>
+    ///   A panning spot is panned rather than dug, but it belongs here rather than in a group of its
+    ///   own: it's the same bargain as the other two rows, one spot worked with one tool for a random
+    ///   handful, and a group with a single row in it would only be harder to find.
+    /// </remarks>
     private static void AddDigging()
     {
         TargetCatalog.Add(TargetCatalog.ArtifactSpotId, I18n.Target_ArtifactSpot(), TargetGroup.Digging, "(O)590");
         TargetCatalog.Add(TargetCatalog.SeedSpotId, I18n.Target_SeedSpot(), TargetGroup.Digging, "(O)SeedSpot");
+        TargetCatalog.Add(TargetCatalog.PanningSpotId, I18n.Target_PanningSpot(), TargetGroup.Digging, "(T)Pan");
     }
 
     /// <summary>Add the row for shaking wild trees.</summary>
