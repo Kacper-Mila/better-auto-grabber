@@ -29,6 +29,9 @@ internal sealed class ModEntry : Mod
     private ModConfig Config = null!;
     private HarvestEngine Engine = null!;
 
+    /// <summary>The best tool of each kind the player owns, used for the tool requirement gate.</summary>
+    private ToolOwnership Tools = null!;
+
     /// <summary>How much each grabber collected today, keyed by the location it stands in.</summary>
     private readonly Dictionary<string, int> DailyTally = new();
 
@@ -46,7 +49,8 @@ internal sealed class ModEntry : Mod
     {
         this.Config = helper.ReadConfig<ModConfig>();
         I18n.Init(helper.Translation);
-        this.Engine = new HarvestEngine(this.Config, this.Monitor);
+        this.Tools = new ToolOwnership(helper.Data, this.Monitor);
+        this.Engine = new HarvestEngine(this.Config, this.Monitor, this.Tools);
 
         AutoGrabberPatches.Apply(new Harmony(this.ModManifest.UniqueID), this.Monitor);
 
@@ -79,6 +83,7 @@ internal sealed class ModEntry : Mod
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
         TargetCatalog.Rebuild();
+        this.Tools.Load();
 
         string breakdown = string.Join(", ", TargetCatalog.All
             .GroupBy(target => target.Group)
@@ -94,6 +99,7 @@ internal sealed class ModEntry : Mod
         this.DailyTally.Clear();
         this.FullGrabbers.Clear();
         this.Engine.ClearDailyCaches();
+        this.Tools.Refresh();
         this.RunGrabbers(atDayStart: true);
     }
 
@@ -447,7 +453,7 @@ internal sealed class ModEntry : Mod
             allowedValues: new[] { nameof(GrabFrequency.TenMinutes), nameof(GrabFrequency.Hourly), nameof(GrabFrequency.FourHours), nameof(GrabFrequency.Daily) }
         );
 
-        api.AddBoolOption(this.ModManifest, () => this.Config.RespectToolRequirements, value => this.Config.RespectToolRequirements = value, () => this.Helper.Translation.Get("config.respect-tools"));
+        api.AddBoolOption(this.ModManifest, () => this.Config.RespectToolRequirements, value => this.Config.RespectToolRequirements = value, () => this.Helper.Translation.Get("config.respect-tools"), () => this.Helper.Translation.Get("config.respect-tools.tooltip"));
         api.AddBoolOption(this.ModManifest, () => this.Config.GrantExperience, value => this.Config.GrantExperience = value, () => this.Helper.Translation.Get("config.grant-xp"));
         api.AddBoolOption(this.ModManifest, () => this.Config.SkipFestivalLocations, value => this.Config.SkipFestivalLocations = value, () => this.Helper.Translation.Get("config.skip-festivals"));
         api.AddBoolOption(this.ModManifest, () => this.Config.DailySummary, value => this.Config.DailySummary = value, () => this.Helper.Translation.Get("config.daily-summary"));

@@ -159,12 +159,26 @@ Edit `config.json` or use [Generic Mod Config Menu](https://www.nexusmods.com/st
 | Setting | Default | Meaning |
 |---|---|---|
 | `DefaultFrequency` | `Hourly` | How often grabbers run unless one overrides it |
-| `RespectToolRequirements` | `true` | Large stumps need a copper axe, logs a steel axe, and so on |
+| `RespectToolRequirements` | `true` | Large stumps need a copper axe, logs a steel axe, and so on (see below) |
 | `GrantExperience` | `true` | Grant the skill experience harvesting by hand would give |
 | `SkipFestivalLocations` | `true` | Leave festival and event maps alone |
 | `DailySummary` | `true` | Report each day what the grabbers collected |
 | `VerboseLogging` | `false` | Log every pass in detail (see below) |
 | `SettingsButtonOffsetX` / `Y` | `0` | Nudge the **!** button if another mod's button overlaps it |
+
+### Tool requirements
+
+With `RespectToolRequirements` on, a grabber only takes what your tools could handle: a copper axe
+for large stumps, a steel axe for hollow logs, a steel pickaxe for boulders, a gold pickaxe for
+meteorites, any hoe for artifact and seed spots.
+
+It counts a tool you **own**, not one you carry. The world is checked once a day, so a pickaxe left
+in a chest at home counts, and so does the tool sitting at Clint's forge during the two days of an
+upgrade, when it belongs to no inventory at all. Picking up a finished upgrade counts straight away.
+
+Because the game never records the level a tool was upgraded to, the best of each kind seen is
+remembered in your save: once you have owned a gold pickaxe, your grabbers keep mining meteorites
+even if that pickaxe is later lost or thrown away.
 
 ## Troubleshooting
 

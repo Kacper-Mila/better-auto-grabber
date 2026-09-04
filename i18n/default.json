@@ -61,6 +61,7 @@
     "summary.full": "The auto-grabber in {{location}} is full.",
 
     "config.respect-tools": "Respect tool requirements",
+    "config.respect-tools.tooltip": "Only harvest what your tools could handle. It counts any tool you own, wherever it is: your backpack, a chest, or Clint's forge mid-upgrade. You never have to carry it.",
     "config.grant-xp": "Grant experience",
     "config.skip-festivals": "Skip festival locations",
     "config.daily-summary": "Daily summary",

@@ -9,7 +9,6 @@ using StardewValley.GameData.FarmAnimals;
 using StardewValley.GameData.Machines;
 using StardewValley.Objects;
 using StardewValley.TerrainFeatures;
-using StardewValley.Tools;
 using xTile.Layers;
 using xTile.Tiles;
 using Object = StardewValley.Object;
@@ -23,13 +22,17 @@ internal sealed class HarvestEngine
     private readonly IMonitor Monitor;
     private readonly GrabberHarvester Harvester = new();
 
+    /// <summary>The best tool of each kind the player owns, which gates stumps, boulders and dig spots.</summary>
+    private readonly ToolOwnership Tools;
+
     /// <summary>The garbage cans found on each location's map, keyed by location, cached for the day.</summary>
     private readonly Dictionary<string, List<(Vector2 Tile, string Id)>> TrashCansByLocation = new();
 
-    public HarvestEngine(ModConfig config, IMonitor monitor)
+    public HarvestEngine(ModConfig config, IMonitor monitor, ToolOwnership tools)
     {
         this.Config = config;
         this.Monitor = monitor;
+        this.Tools = tools;
     }
 
     /// <summary>Run one harvest pass for a grabber.</summary>
@@ -852,6 +855,7 @@ internal sealed class HarvestEngine
     }
 
     /// <summary>Get whether the player owns the tool vanilla would require for a target.</summary>
+    /// <remarks>Ownership, not what's in the backpack: see <see cref="ToolOwnership"/>.</remarks>
     private bool HasToolFor(string targetId)
     {
         if (!this.Config.RespectToolRequirements)
@@ -859,12 +863,12 @@ internal sealed class HarvestEngine
 
         return targetId switch
         {
-            TargetCatalog.ArtifactSpotId or TargetCatalog.SeedSpotId => HarvestEngine.ToolLevel("Hoe") >= 0,
-            _ when targetId == TargetCatalog.ClumpId(ResourceClump.stumpIndex) => HarvestEngine.ToolLevel("Axe") >= 1,
-            _ when targetId == TargetCatalog.ClumpId(ResourceClump.hollowLogIndex) => HarvestEngine.ToolLevel("Axe") >= 2,
-            _ when targetId == TargetCatalog.ClumpId(ResourceClump.boulderIndex) => HarvestEngine.ToolLevel("Pickaxe") >= 2,
-            _ when targetId == TargetCatalog.ClumpId(ResourceClump.meteoriteIndex) => HarvestEngine.ToolLevel("Pickaxe") >= 3,
-            _ when targetId == TargetCatalog.ClumpId(ResourceClump.mineRock1Index) => HarvestEngine.ToolLevel("Pickaxe") >= 0,
+            TargetCatalog.ArtifactSpotId or TargetCatalog.SeedSpotId => this.Tools.GetLevel(ToolKind.Hoe) >= 0,
+            _ when targetId == TargetCatalog.ClumpId(ResourceClump.stumpIndex) => this.Tools.GetLevel(ToolKind.Axe) >= 1,
+            _ when targetId == TargetCatalog.ClumpId(ResourceClump.hollowLogIndex) => this.Tools.GetLevel(ToolKind.Axe) >= 2,
+            _ when targetId == TargetCatalog.ClumpId(ResourceClump.boulderIndex) => this.Tools.GetLevel(ToolKind.Pickaxe) >= 2,
+            _ when targetId == TargetCatalog.ClumpId(ResourceClump.meteoriteIndex) => this.Tools.GetLevel(ToolKind.Pickaxe) >= 3,
+            _ when targetId == TargetCatalog.ClumpId(ResourceClump.mineRock1Index) => this.Tools.GetLevel(ToolKind.Pickaxe) >= 0,
             _ => true
         };
     }
@@ -873,27 +877,20 @@ internal sealed class HarvestEngine
     private string DescribeToolRequirement(string targetId)
     {
         if (targetId == TargetCatalog.ArtifactSpotId || targetId == TargetCatalog.SeedSpotId)
-            return "needs a hoe in your inventory";
+            return "you don't own a hoe";
 
         if (targetId == TargetCatalog.ClumpId(ResourceClump.stumpIndex))
-            return "needs a copper axe or better in your inventory";
+            return "you don't own a copper axe or better";
 
         if (targetId == TargetCatalog.ClumpId(ResourceClump.hollowLogIndex))
-            return "needs a steel axe or better in your inventory";
+            return "you don't own a steel axe or better";
 
         if (targetId == TargetCatalog.ClumpId(ResourceClump.boulderIndex))
-            return "needs a steel pickaxe or better in your inventory";
+            return "you don't own a steel pickaxe or better";
 
         if (targetId == TargetCatalog.ClumpId(ResourceClump.meteoriteIndex))
-            return "needs a gold pickaxe or better in your inventory";
+            return "you don't own a gold pickaxe or better";
 
-        return "needs a better tool in your inventory";
-    }
-
-    /// <summary>Get the upgrade level of a tool the player is carrying, or -1 if they aren't carrying one.</summary>
-    private static int ToolLevel(string name)
-    {
-        Tool? tool = Game1.player.getToolFromName(name);
-        return tool?.UpgradeLevel ?? -1;
+        return "you don't own a good enough tool";
     }
 }
