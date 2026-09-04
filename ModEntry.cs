@@ -29,6 +29,9 @@ internal sealed class ModEntry : Mod
     private ModConfig Config = null!;
     private HarvestEngine Engine = null!;
 
+    /// <summary>The best tool of each kind the player owns, used for the tool requirement gate.</summary>
+    private ToolOwnership Tools = null!;
+
     /// <summary>How much each grabber collected today, keyed by the location it stands in.</summary>
     private readonly Dictionary<string, int> DailyTally = new();
 
@@ -46,7 +49,8 @@ internal sealed class ModEntry : Mod
     {
         this.Config = helper.ReadConfig<ModConfig>();
         I18n.Init(helper.Translation);
-        this.Engine = new HarvestEngine(this.Config, this.Monitor);
+        this.Tools = new ToolOwnership(helper.Data, this.Monitor);
+        this.Engine = new HarvestEngine(this.Config, this.Monitor, this.Tools);
 
         AutoGrabberPatches.Apply(new Harmony(this.ModManifest.UniqueID), this.Monitor);
 
@@ -55,6 +59,7 @@ internal sealed class ModEntry : Mod
         helper.Events.GameLoop.DayStarted += this.OnDayStarted;
         helper.Events.GameLoop.TimeChanged += this.OnTimeChanged;
         helper.Events.GameLoop.DayEnding += this.OnDayEnding;
+        helper.Events.World.ObjectListChanged += this.OnObjectListChanged;
         helper.Events.Display.MenuChanged += this.OnMenuChanged;
         helper.Events.Display.RenderedActiveMenu += this.OnRenderedActiveMenu;
         helper.Events.Input.ButtonPressed += this.OnButtonPressed;
@@ -78,6 +83,7 @@ internal sealed class ModEntry : Mod
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
         TargetCatalog.Rebuild();
+        this.Tools.Load();
 
         string breakdown = string.Join(", ", TargetCatalog.All
             .GroupBy(target => target.Group)
@@ -92,6 +98,8 @@ internal sealed class ModEntry : Mod
     {
         this.DailyTally.Clear();
         this.FullGrabbers.Clear();
+        this.Engine.ClearDailyCaches();
+        this.Tools.Refresh();
         this.RunGrabbers(atDayStart: true);
     }
 
@@ -115,6 +123,21 @@ internal sealed class ModEntry : Mod
             Game1.addHUDMessage(new HUDMessage(I18n.Summary_Full(location), HUDMessage.error_type));
     }
 
+    /// <summary>Harvest as soon as a grabber that already has targets is put down.</summary>
+    /// <remarks>
+    ///   Settings travel with the machine, so a grabber picked up and placed elsewhere arrives already
+    ///   configured and shouldn't sit idle until its next interval. A freshly crafted one has nothing
+    ///   ticked yet, so this does nothing for it -- its first pass comes when its settings page closes.
+    /// </remarks>
+    private void OnObjectListChanged(object? sender, ObjectListChangedEventArgs e)
+    {
+        foreach ((Vector2 _, Object obj) in e.Added)
+        {
+            if (obj.QualifiedItemId == AutoGrabberPatches.AutoGrabberId)
+                this.RunGrabberNow(e.Location, obj);
+        }
+    }
+
     /// <summary>Reopen the grabber's own menu when the game replaces it with a stock chest one.</summary>
     /// <remarks>
     ///   Putting an item into the grabber goes through <see cref="Chest.grabItemFromInventory" />, which
@@ -123,6 +146,11 @@ internal sealed class ModEntry : Mod
     /// </remarks>
     private void OnMenuChanged(object? sender, MenuChangedEventArgs e)
     {
+        // Ticking a row saves it as it's ticked, so a settings page that's just closed leaves a grabber
+        // configured and idle. Harvest it now instead of waiting for its interval.
+        if (e.OldMenu is GrabberSettingsMenu settingsPage)
+            this.RunGrabberNow(settingsPage.ConfiguredGrabber.Location, settingsPage.ConfiguredGrabber);
+
         if (e.NewMenu is not ItemGrabMenu menu || menu.context is not Chest chest)
             return;
 
@@ -235,36 +263,63 @@ internal sealed class ModEntry : Mod
         foreach ((GameLocation home, Object grabber) in ModEntry.FindGrabbers())
         {
             GrabberSettings settings = GrabberSettings.Load(grabber);
-            if (!settings.HasExtraTargets || !this.IsDue(settings, atDayStart))
-                continue;
-
-            // Every grabber sweeps everywhere it reaches. Two grabbers can't collect the same item:
-            // whichever runs first removes it from the world, and the next one finds nothing there. The
-            // ordering below is what decides who gets first pick when they want the same thing.
-            List<GameLocation> locations = settings.ResolveLocations(grabber, this.Config).ToList();
-            if (locations.Count == 0)
-                continue;
-
-            Stopwatch timer = Stopwatch.StartNew();
-            HarvestReport report = this.Engine.Run(grabber, settings, locations);
-            timer.Stop();
-
-            this.LogPass(home, grabber, settings, locations, report, timer.ElapsedMilliseconds);
-
-            if (report.Total <= 0)
-                continue;
-
-            string label = home.DisplayName ?? home.Name;
-            this.DailyTally[label] = this.DailyTally.GetValueOrDefault(label) + report.Total;
-
-            if (grabber.heldObject.Value is Chest chest)
-            {
-                grabber.showNextIndex.Value = !chest.isEmpty();
-                if (GrabberOutput.IsChestFull(chest))
-                    this.FullGrabbers.Add(label);
-            }
-
+            if (this.IsDue(settings, atDayStart))
+                this.RunGrabber(home, grabber, settings);
         }
+    }
+
+    /// <summary>Run one grabber's harvest pass, whatever its interval says.</summary>
+    /// <param name="home">The location the grabber stands in.</param>
+    /// <param name="grabber">The placed grabber.</param>
+    /// <param name="settings">The grabber's settings.</param>
+    private void RunGrabber(GameLocation home, Object grabber, GrabberSettings settings)
+    {
+        if (!settings.HasExtraTargets)
+            return;
+
+        // Every grabber sweeps everywhere it reaches. Two grabbers can't collect the same item:
+        // whichever runs first removes it from the world, and the next one finds nothing there. The
+        // ordering in FindGrabbers is what decides who gets first pick when they want the same thing.
+        List<GameLocation> locations = settings.ResolveLocations(grabber, this.Config).ToList();
+        if (locations.Count == 0)
+            return;
+
+        Stopwatch timer = Stopwatch.StartNew();
+        HarvestReport report = this.Engine.Run(grabber, settings, locations);
+        timer.Stop();
+
+        this.LogPass(home, grabber, settings, locations, report, timer.ElapsedMilliseconds);
+
+        if (report.Total <= 0)
+            return;
+
+        string label = home.DisplayName ?? home.Name;
+        this.DailyTally[label] = this.DailyTally.GetValueOrDefault(label) + report.Total;
+
+        if (grabber.heldObject.Value is Chest chest)
+        {
+            grabber.showNextIndex.Value = !chest.isEmpty();
+            if (GrabberOutput.IsChestFull(chest))
+                this.FullGrabbers.Add(label);
+        }
+    }
+
+    /// <summary>Run one grabber straight away, outside its schedule.</summary>
+    /// <remarks>
+    ///   A grabber's first pass would otherwise be whenever its interval next comes round: the next whole
+    ///   hour by default, and not until tomorrow morning on a daily one. That's a long wait to find out
+    ///   whether the row you just ticked does anything, so putting a configured grabber down and closing
+    ///   its settings page each harvest immediately.
+    /// </remarks>
+    /// <param name="home">The location the grabber stands in.</param>
+    /// <param name="grabber">The placed grabber.</param>
+    private void RunGrabberNow(GameLocation? home, Object grabber)
+    {
+        // harvesting changes the world, so only the host does it; farmhands would each collect a copy
+        if (!Context.IsWorldReady || !Context.IsMainPlayer || home == null)
+            return;
+
+        this.RunGrabber(home, grabber, GrabberSettings.Load(grabber));
     }
 
     /// <summary>Log what a grabber is set to and what its pass did.</summary>
@@ -394,13 +449,12 @@ internal sealed class ModEntry : Mod
             this.ModManifest,
             () => this.Config.DefaultFrequency.ToString(),
             value => this.Config.DefaultFrequency = Enum.TryParse(value, out GrabFrequency parsed) ? parsed : GrabFrequency.Hourly,
-            () => I18n.Scope_Frequency(),
+            () => I18n.Behaviour_Frequency(),
             allowedValues: new[] { nameof(GrabFrequency.TenMinutes), nameof(GrabFrequency.Hourly), nameof(GrabFrequency.FourHours), nameof(GrabFrequency.Daily) }
         );
 
-        api.AddBoolOption(this.ModManifest, () => this.Config.RespectToolRequirements, value => this.Config.RespectToolRequirements = value, () => this.Helper.Translation.Get("config.respect-tools"));
+        api.AddBoolOption(this.ModManifest, () => this.Config.RespectToolRequirements, value => this.Config.RespectToolRequirements = value, () => this.Helper.Translation.Get("config.respect-tools"), () => this.Helper.Translation.Get("config.respect-tools.tooltip"));
         api.AddBoolOption(this.ModManifest, () => this.Config.GrantExperience, value => this.Config.GrantExperience = value, () => this.Helper.Translation.Get("config.grant-xp"));
-        api.AddBoolOption(this.ModManifest, () => this.Config.ReplantCrops, value => this.Config.ReplantCrops = value, () => this.Helper.Translation.Get("config.replant"));
         api.AddBoolOption(this.ModManifest, () => this.Config.SkipFestivalLocations, value => this.Config.SkipFestivalLocations = value, () => this.Helper.Translation.Get("config.skip-festivals"));
         api.AddBoolOption(this.ModManifest, () => this.Config.DailySummary, value => this.Config.DailySummary = value, () => this.Helper.Translation.Get("config.daily-summary"));
         api.AddBoolOption(this.ModManifest, () => this.Config.VerboseLogging, value => this.Config.VerboseLogging = value, () => this.Helper.Translation.Get("config.verbose-logging"));

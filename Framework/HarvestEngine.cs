@@ -8,8 +8,11 @@ using StardewValley.Extensions;
 using StardewValley.GameData.FarmAnimals;
 using StardewValley.GameData.Machines;
 using StardewValley.Objects;
+using StardewValley.Locations;
 using StardewValley.TerrainFeatures;
 using StardewValley.Tools;
+using xTile.Layers;
+using xTile.Tiles;
 using Object = StardewValley.Object;
 
 namespace BetterAutoGrabber.Framework;
@@ -21,10 +24,17 @@ internal sealed class HarvestEngine
     private readonly IMonitor Monitor;
     private readonly GrabberHarvester Harvester = new();
 
-    public HarvestEngine(ModConfig config, IMonitor monitor)
+    /// <summary>The best tool of each kind the player owns, which gates stumps, boulders and dig spots.</summary>
+    private readonly ToolOwnership Tools;
+
+    /// <summary>The garbage cans found on each location's map, keyed by location, cached for the day.</summary>
+    private readonly Dictionary<string, List<(Vector2 Tile, string Id)>> TrashCansByLocation = new();
+
+    public HarvestEngine(ModConfig config, IMonitor monitor, ToolOwnership tools)
     {
         this.Config = config;
         this.Monitor = monitor;
+        this.Tools = tools;
     }
 
     /// <summary>Run one harvest pass for a grabber.</summary>
@@ -58,7 +68,9 @@ internal sealed class HarvestEngine
                 this.SweepFruitTrees(location, settings, output);
                 this.SweepResourceClumps(location, settings, output);
                 this.SweepDigSpots(location, settings, output);
+                this.SweepPanningSpot(location, settings, output);
                 this.SweepTrees(location, settings, output);
+                this.SweepTrashCans(location, settings, output);
                 this.SweepMachines(location, settings, output);
             }
             catch (Exception ex)
@@ -68,6 +80,13 @@ internal sealed class HarvestEngine
         }
 
         return report;
+    }
+
+    /// <summary>Drop anything cached for one day, before the first pass of the next one.</summary>
+    /// <remarks>Maps are swapped out by season and rewritten by content packs between days.</remarks>
+    public void ClearDailyCaches()
+    {
+        this.TrashCansByLocation.Clear();
     }
 
     /*********
@@ -277,8 +296,7 @@ internal sealed class HarvestEngine
         if (dirt.crop.harvest((int)tile.X, (int)tile.Y, dirt, this.Harvester))
         {
             dirt.destroyCrop(showAnimation: false);
-            if (this.Config.ReplantCrops)
-                HarvestEngine.TryReplant(dirt, seedId, chest);
+            HarvestEngine.TryReplant(dirt, seedId, chest, settings.Replant);
         }
 
         if (this.Config.GrantExperience)
@@ -297,26 +315,63 @@ internal sealed class HarvestEngine
             : ItemRegistry.QualifyItemId(crop.indexOfHarvest.Value);
     }
 
-    /// <summary>Replant the seed for a harvested crop, if the grabber is holding one.</summary>
-    private static void TryReplant(HoeDirt dirt, string? seedId, Chest chest)
+    /// <summary>Replant the soil a crop was just harvested from, using a seed the grabber is holding.</summary>
+    /// <param name="dirt">The soil the crop came out of.</param>
+    /// <param name="seedId">The seed the harvested crop grew from.</param>
+    /// <param name="chest">The grabber's contents, which is the only place a seed may come from.</param>
+    /// <param name="mode">Which seeds this grabber is allowed to plant.</param>
+    private static void TryReplant(HoeDirt dirt, string? seedId, Chest chest, ReplantMode mode)
     {
-        if (string.IsNullOrWhiteSpace(seedId) || dirt.crop != null)
+        if (mode == ReplantMode.Never || dirt.crop != null)
             return;
 
-        string? qualifiedSeed = ItemRegistry.QualifyItemId(seedId);
-        if (qualifiedSeed == null)
-            return;
+        foreach (Item seed in HarvestEngine.GetReplantSeeds(chest, seedId, mode))
+        {
+            // plant() is what decides whether a seed may go in: it checks the crop data, the soil's own
+            // season and the location's planting rules, and leaves the dirt untouched when it refuses,
+            // so a rejected seed just means trying the next one. canPlantThisSeedHere() looks like the
+            // fitting check, but it tests Game1.currentLocation and the player's own footprint, neither
+            // of which says anything about soil a remote grabber is reaching.
+            if (!dirt.plant(seed.ItemId, Game1.player, isFertilizer: false))
+                continue;
 
-        Item? seed = chest.Items.FirstOrDefault(item => item?.QualifiedItemId == qualifiedSeed);
-        if (seed == null)
+            seed.Stack--;
+            if (seed.Stack <= 0)
+                chest.Items.Remove(seed);
             return;
+        }
+    }
 
-        if (!dirt.plant(seed.ItemId, Game1.player, isFertilizer: false))
-            return;
+    /// <summary>Get the seeds in a grabber that may be replanted, in the order they should be tried.</summary>
+    /// <remarks>
+    ///   The harvested crop's own seed comes first even under <see cref="ReplantMode.AnySeed" />. That
+    ///   mode is there so soil keeps being used once the right seed runs out, not so a parsnip field
+    ///   quietly turns into whatever else was in the box.
+    /// </remarks>
+    private static IEnumerable<Item> GetReplantSeeds(Chest chest, string? seedId, ReplantMode mode)
+    {
+        string? qualifiedSeed = string.IsNullOrWhiteSpace(seedId)
+            ? null
+            : ItemRegistry.QualifyItemId(seedId);
 
-        seed.Stack--;
-        if (seed.Stack <= 0)
-            chest.Items.Remove(seed);
+        Item? matching = qualifiedSeed == null
+            ? null
+            : chest.Items.FirstOrDefault(item => item?.QualifiedItemId == qualifiedSeed);
+
+        if (matching != null)
+            yield return matching;
+
+        if (mode != ReplantMode.AnySeed)
+            yield break;
+
+        // Category rather than a crop-data lookup, because that's what tells a seed apart from the
+        // fertiliser and saplings sharing the box. Mixed Seeds pass, and resolve to something in season
+        // when they're planted, which is the whole point of them.
+        foreach (Item item in chest.Items.ToArray())
+        {
+            if (item != null && item != matching && item.Category == Object.SeedsCategory)
+                yield return item;
+        }
     }
 
     /// <summary>Grant the farming experience the player would have got for harvesting a crop by hand.</summary>
@@ -539,6 +594,78 @@ internal sealed class HarvestEngine
         }
     }
 
+    /// <summary>Pan the glittering spot in a location's water.</summary>
+    /// <remarks>
+    ///   One spot per location at most: <see cref="GameLocation.orePanPoint"/> holds a single tile, and
+    ///   Point.Zero means there's nothing to pan. Clearing it is what makes the sparkle go away, since
+    ///   the location rebuilds its animation whenever the field changes.
+    /// </remarks>
+    private void SweepPanningSpot(GameLocation location, GrabberSettings settings, GrabberOutput output)
+    {
+        if (output.IsFull || location.orePanPoint.Value == Point.Zero)
+            return;
+
+        if (!settings.TargetIds.Contains(TargetCatalog.PanningSpotId))
+            return;
+
+        if (!this.HasToolFor(TargetCatalog.PanningSpotId))
+        {
+            output.Report.Skip($"{TargetCatalog.Get(TargetCatalog.PanningSpotId)?.DisplayName ?? TargetCatalog.PanningSpotId}: {this.DescribeToolRequirement(TargetCatalog.PanningSpotId)}");
+            return;
+        }
+
+        // The pan itself, not just its level: getPanItems reads its enchantments. With tool
+        // requirements turned off there may not be one to find, so it pans as a plain copper pan.
+        Pan pan = this.Tools.GetTool(ToolKind.Pan) as Pan ?? new Pan(1);
+
+        // The loot is seeded from the spot's own tile, so it has to be rolled before the spot is
+        // cleared. Vanilla's DoFunction hands the items to the player through a menu, which is no use
+        // mid-pass, so only the roll is borrowed and the items go in the chest instead.
+        Vector2 tile = Utility.PointToVector2(location.orePanPoint.Value);
+        List<Item> items = new();
+        this.PreserveExperience(() => items.AddRange(pan.getPanItems(location, Game1.player)));
+
+        location.orePanPoint.Value = Point.Zero;
+
+        Vector2 dropTile = HarvestEngine.NearestDryTile(location, tile);
+        foreach (Item item in items)
+            output.Deposit(item, location, dropTile);
+
+        // An upgraded pan rolls for a fresh spot the moment the old one is worked, which is most of
+        // what the upgrade buys. Copied from Pan.DoFunction, IslandNorth quirk and all.
+        for (int i = 0; i < pan.UpgradeLevel - 1; i++)
+        {
+            if (location.performOrePanTenMinuteUpdate(Game1.random))
+                break;
+            if (Game1.random.NextDouble() < 0.5 && location.performOrePanTenMinuteUpdate(Game1.random) && location is not IslandNorth)
+                break;
+        }
+    }
+
+    /// <summary>Get the tile a full grabber should drop a panned item on.</summary>
+    /// <remarks>
+    ///   The spot itself is open water, where a dropped item is simply gone. A panning spot only ever
+    ///   spawns within one tile of land, so one of the eight neighbours is dry ground to fall back on.
+    ///   Straight neighbours are tried before corners, since that's where the shore usually is.
+    /// </remarks>
+    private static Vector2 NearestDryTile(GameLocation location, Vector2 tile)
+    {
+        Vector2[] offsets =
+        {
+            new(-1, 0), new(1, 0), new(0, -1), new(0, 1),
+            new(-1, -1), new(1, -1), new(-1, 1), new(1, 1)
+        };
+
+        foreach (Vector2 offset in offsets)
+        {
+            Vector2 neighbour = tile + offset;
+            if (location.isTileOnMap(neighbour) && !location.isWaterTile((int)neighbour.X, (int)neighbour.Y))
+                return neighbour;
+        }
+
+        return tile;
+    }
+
     /*********
     ** Trees
     *********/
@@ -567,6 +694,123 @@ internal sealed class HarvestEngine
 
             this.CaptureDebris(location, output, tile, () => tree.shake(tile, doEvenIfStillShaking: false));
         }
+    }
+
+    /*********
+    ** Trash cans
+    *********/
+    /// <summary>Rummage in the location's trash cans for whatever the day's roll gives.</summary>
+    /// <remarks>
+    ///   This doesn't call <c>GameLocation.CheckGarbage</c>. Even with its animations and NPC reactions
+    ///   turned off, its last step hands the item to <c>Farmer.addItemByMenuIfNecessary</c> whenever the
+    ///   data entry sets <c>AddToInventoryDirectly</c> -- which would drop it in the host's pockets, or
+    ///   pop an item grab menu mid-pass, instead of putting it in the grabber. So the pass does what
+    ///   CheckGarbage does around that step: mark the can checked, roll it, count it.
+    ///
+    ///   No NPC reactions either. Vanilla costs the player 25 friendship with whoever is standing nearby
+    ///   and announces it in chat, on the same reasoning as the milk pail's +5: it's payment for walking
+    ///   over and being seen doing it, and a grabber did neither.
+    /// </remarks>
+    private void SweepTrashCans(GameLocation location, GrabberSettings settings, GrabberOutput output)
+    {
+        if (!settings.TargetIds.Contains(TargetCatalog.TrashCanId))
+            return;
+
+        ISet<string> checkedToday = Game1.netWorldState.Value.CheckedGarbage;
+        foreach ((Vector2 tile, string id) in this.GetTrashCans(location))
+        {
+            // Bail before rolling rather than after. TryGetGarbageItem doesn't touch the world, so a
+            // grabber with no room leaves the can exactly as it found it and the player can still check it.
+            if (output.IsFull)
+                return;
+
+            if (checkedToday.Contains(id))
+                continue;
+
+            location.TryGetGarbageItem(
+                id,
+                Game1.player.DailyLuck,
+                out Item? item,
+                out _,
+                out _,
+                error => this.Monitor.Log($"Ignored invalid garbage can '{id}' in '{location.NameOrUniqueName}': {error}.", LogLevel.Warn)
+            );
+
+            // The can is used up either way, exactly as vanilla does it. The roll is seeded by the day
+            // and the can's ID, so a can that came up empty here would have come up empty for the player.
+            checkedToday.Add(id);
+            Game1.stats.Increment("trashCansChecked");
+
+            if (item != null)
+                output.Deposit(item, location, tile);
+        }
+    }
+
+    /// <summary>Find the garbage cans on a location's map, caching the answer for the rest of the day.</summary>
+    /// <remarks>
+    ///   A trash can isn't an object or a terrain feature -- it's an <c>Action Garbage &lt;id&gt;</c> tile
+    ///   property on the Buildings layer, so the only way to find one is to sweep the layer.
+    ///
+    ///   Which of the two map accessors this uses matters. <see cref="GameLocation.Map" /> calls
+    ///   <c>updateMap</c>, loading the map if it isn't in memory yet; the <c>map</c> field doesn't. Somewhere
+    ///   the player has already been is loaded during an ordinary day anyway, so forcing it there costs
+    ///   nothing and is the only way a grabber can find cans before the player next walks past them.
+    ///   Somewhere they haven't been is left alone rather than paged in for a grabber's sake.
+    /// </remarks>
+    private List<(Vector2 Tile, string Id)> GetTrashCans(GameLocation location)
+    {
+        if (this.TrashCansByLocation.TryGetValue(location.NameOrUniqueName, out List<(Vector2, string)>? cached))
+            return cached;
+
+        Layer? layer = (GrabberSettings.HasVisited(location) ? location.Map : location.map)?.GetLayer("Buildings");
+        if (layer == null)
+            return new List<(Vector2, string)>();  // not cached: the map may well be loaded by the next pass
+
+        List<(Vector2 Tile, string Id)> cans = new();
+        for (int x = 0; x < layer.LayerWidth; x++)
+        {
+            for (int y = 0; y < layer.LayerHeight; y++)
+            {
+                Tile? tile = layer.Tiles[x, y];
+                if (tile == null)
+                    continue;
+
+                // tile properties win over tilesheet ones, the same order the game reads them in
+                if (!tile.Properties.TryGetValue("Action", out string action) && !tile.TileIndexProperties.TryGetValue("Action", out action))
+                    continue;
+
+                string[] parts = ArgUtility.SplitBySpace(action);
+                if (ArgUtility.Get(parts, 0) != "Garbage" || !ArgUtility.TryGet(parts, 1, out string id, out _, allowBlank: false))
+                    continue;
+
+                cans.Add((new Vector2(x, y), HarvestEngine.NormalizeTrashCanId(id)));
+            }
+        }
+
+        this.TrashCansByLocation[location.NameOrUniqueName] = cans;
+        return cans;
+    }
+
+    /// <summary>Get the ID a garbage can is tracked under in <c>NetWorldState.CheckedGarbage</c>.</summary>
+    /// <remarks>
+    ///   Maps written before 1.6 number their cans, and <c>CheckGarbage</c> renames those before touching
+    ///   the checked set. Skipping this would file a can under "0" while the player's own check files the
+    ///   same can under "JodiAndKent", so both would pay out.
+    /// </remarks>
+    private static string NormalizeTrashCanId(string id)
+    {
+        return id switch
+        {
+            "0" => "JodiAndKent",
+            "1" => "EmilyAndHaley",
+            "2" => "Mayor",
+            "3" => "Museum",
+            "4" => "Blacksmith",
+            "5" => "Saloon",
+            "6" => "Evelyn",
+            "7" => "JojaMart",
+            _ => id
+        };
     }
 
     /*********
@@ -685,7 +929,58 @@ internal sealed class HarvestEngine
         }
     }
 
+    /// <summary>Run a harvest step that hands out its own experience, and take it back if the mod is set not to grant any.</summary>
+    /// <param name="action">The step to run.</param>
+    /// <remarks>
+    ///   Every other pass adds experience itself and can simply not do it. Pan.getPanItems grants
+    ///   mining and foraging experience inside the same call that rolls the loot, and takes no flag
+    ///   for it, so honouring GrantExperience means putting the skills back afterwards. Everything
+    ///   Farmer.gainExperience touches is restored: the points, any level it raised, the levels queued
+    ///   for the end-of-day menu, and the mastery total.
+    /// </remarks>
+    private void PreserveExperience(Action action)
+    {
+        if (this.Config.GrantExperience)
+        {
+            action();
+            return;
+        }
+
+        Farmer player = Game1.player;
+        int[] points = new int[player.experiencePoints.Length];
+        for (int i = 0; i < points.Length; i++)
+            points[i] = player.experiencePoints[i];
+
+        int farming = player.farmingLevel.Value;
+        int fishing = player.fishingLevel.Value;
+        int foraging = player.foragingLevel.Value;
+        int mining = player.miningLevel.Value;
+        int combat = player.combatLevel.Value;
+        int luck = player.luckLevel.Value;
+        Point[] queuedLevels = player.newLevels.ToArray();
+        uint mastery = Game1.stats.Get("MasteryExp");
+
+        action();
+
+        for (int i = 0; i < points.Length; i++)
+            player.experiencePoints[i] = points[i];
+
+        player.farmingLevel.Value = farming;
+        player.fishingLevel.Value = fishing;
+        player.foragingLevel.Value = foraging;
+        player.miningLevel.Value = mining;
+        player.combatLevel.Value = combat;
+        player.luckLevel.Value = luck;
+
+        player.newLevels.Clear();
+        foreach (Point level in queuedLevels)
+            player.newLevels.Add(level);
+
+        Game1.stats.Set("MasteryExp", mastery);
+    }
+
     /// <summary>Get whether the player owns the tool vanilla would require for a target.</summary>
+    /// <remarks>Ownership, not what's in the backpack: see <see cref="ToolOwnership"/>.</remarks>
     private bool HasToolFor(string targetId)
     {
         if (!this.Config.RespectToolRequirements)
@@ -693,12 +988,13 @@ internal sealed class HarvestEngine
 
         return targetId switch
         {
-            TargetCatalog.ArtifactSpotId or TargetCatalog.SeedSpotId => HarvestEngine.ToolLevel("Hoe") >= 0,
-            _ when targetId == TargetCatalog.ClumpId(ResourceClump.stumpIndex) => HarvestEngine.ToolLevel("Axe") >= 1,
-            _ when targetId == TargetCatalog.ClumpId(ResourceClump.hollowLogIndex) => HarvestEngine.ToolLevel("Axe") >= 2,
-            _ when targetId == TargetCatalog.ClumpId(ResourceClump.boulderIndex) => HarvestEngine.ToolLevel("Pickaxe") >= 2,
-            _ when targetId == TargetCatalog.ClumpId(ResourceClump.meteoriteIndex) => HarvestEngine.ToolLevel("Pickaxe") >= 3,
-            _ when targetId == TargetCatalog.ClumpId(ResourceClump.mineRock1Index) => HarvestEngine.ToolLevel("Pickaxe") >= 0,
+            TargetCatalog.ArtifactSpotId or TargetCatalog.SeedSpotId => this.Tools.GetLevel(ToolKind.Hoe) >= 0,
+            TargetCatalog.PanningSpotId => this.Tools.GetLevel(ToolKind.Pan) >= 0,
+            _ when targetId == TargetCatalog.ClumpId(ResourceClump.stumpIndex) => this.Tools.GetLevel(ToolKind.Axe) >= 1,
+            _ when targetId == TargetCatalog.ClumpId(ResourceClump.hollowLogIndex) => this.Tools.GetLevel(ToolKind.Axe) >= 2,
+            _ when targetId == TargetCatalog.ClumpId(ResourceClump.boulderIndex) => this.Tools.GetLevel(ToolKind.Pickaxe) >= 2,
+            _ when targetId == TargetCatalog.ClumpId(ResourceClump.meteoriteIndex) => this.Tools.GetLevel(ToolKind.Pickaxe) >= 3,
+            _ when targetId == TargetCatalog.ClumpId(ResourceClump.mineRock1Index) => this.Tools.GetLevel(ToolKind.Pickaxe) >= 0,
             _ => true
         };
     }
@@ -707,27 +1003,23 @@ internal sealed class HarvestEngine
     private string DescribeToolRequirement(string targetId)
     {
         if (targetId == TargetCatalog.ArtifactSpotId || targetId == TargetCatalog.SeedSpotId)
-            return "needs a hoe in your inventory";
+            return "you don't own a hoe";
+
+        if (targetId == TargetCatalog.PanningSpotId)
+            return "you don't own a pan";
 
         if (targetId == TargetCatalog.ClumpId(ResourceClump.stumpIndex))
-            return "needs a copper axe or better in your inventory";
+            return "you don't own a copper axe or better";
 
         if (targetId == TargetCatalog.ClumpId(ResourceClump.hollowLogIndex))
-            return "needs a steel axe or better in your inventory";
+            return "you don't own a steel axe or better";
 
         if (targetId == TargetCatalog.ClumpId(ResourceClump.boulderIndex))
-            return "needs a steel pickaxe or better in your inventory";
+            return "you don't own a steel pickaxe or better";
 
         if (targetId == TargetCatalog.ClumpId(ResourceClump.meteoriteIndex))
-            return "needs a gold pickaxe or better in your inventory";
+            return "you don't own a gold pickaxe or better";
 
-        return "needs a better tool in your inventory";
-    }
-
-    /// <summary>Get the upgrade level of a tool the player is carrying, or -1 if they aren't carrying one.</summary>
-    private static int ToolLevel(string name)
-    {
-        Tool? tool = Game1.player.getToolFromName(name);
-        return tool?.UpgradeLevel ?? -1;
+        return "you don't own a good enough tool";
     }
 }

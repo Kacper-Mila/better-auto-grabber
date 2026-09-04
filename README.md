@@ -15,7 +15,8 @@ the **!** button on the right edge of the menu.
 **What to grab** is a searchable list of everything the grabber may take, with each row showing what
 the grabber actually interacts with. Forage, crops and fruit are listed as the item itself. A large
 log is listed as the log, because "hardwood" doesn't say where it should come from. Machines are
-listed by machine. Nothing is ticked by default.
+listed by machine. Nothing is ticked by default. Searching matches row names and group names, so
+typing "animal" lists the whole Animals group rather than nothing.
 
 **Where from** sets the grabber's reach:
 
@@ -38,20 +39,73 @@ recognise — a per-building list would have to label its rows `Coop4cb0a4d1-3f8
 — so the useful thing to offer is the family. The rows follow each building's upgrade chain, so a coop
 tier added by a content pack joins the Coop row on its own.
 
+**How it runs** is the third tab, holding the two settings that are about neither what nor where.
+
 **Runs** sets how often this grabber works, or leaves it following the mod-wide default. Every
 grabber also runs once as the day begins whatever its interval, so you wake up to a grabber that has
 already done its morning round.
 
+It runs at two other moments regardless of its interval: when you close its settings page, and when you
+put down a grabber that already has rows ticked. Otherwise the first pass after ticking a row would be
+whenever the interval next came round - the next whole hour by default, and not until tomorrow morning
+on a daily one — which reads a lot like nothing happened.
+
+**Replant crops** decides what a grabber puts back in the soil it just harvested, using only seeds
+kept in the grabber itself:
+
+| Setting | Meaning |
+|---|---|
+| never | Leave the soil empty. This is the default |
+| with matching seed | Replant the crop that was harvested, when its seed is in the grabber |
+| with any seed | Replant the harvested crop, or fall back to any other seed in the grabber |
+
+The crop's own seed is always tried first, so **with any seed** is about keeping soil in use once the
+right seed runs out, not about turning a parsnip field into whatever else was in the box. A seed is
+only planted where you could have planted it yourself: right season, right location, and only into
+empty soil.
+
 ## What it can collect
 
 Forage, crops (including indoor pots), fruit trees, berry and tea bushes, large stumps and logs,
-boulders and meteorites, artifact and seed spots, tree shaking, animal products, and machines.
+boulders and meteorites, artifact and seed spots, panning spots, tree shaking, trash cans, animal
+products, and machines.
 
 Two deliberate omissions:
 
 - **Giant crops** are never harvested. Plenty of people grow them as decoration, and felling one is
   destructive in a way nothing else on the list is.
 - **Golden walnut bushes** aren't collectable.
+
+### Panning spots
+
+**Panning Spot** sits in the **Digging** group, and covers the glittering spot that appears in a
+location's water once the Fish Tank bundle is done. A grabber reaching that location works it with a
+pan and drops the haul in the box, sparkle and all.
+
+The loot is the game's own roll, so your luck, your pan's upgrade level and any enchantment on it all
+count. So does the upgrade's other perk: a steel pan or better rolls for a fresh spot the moment the
+old one is worked, exactly as it does when you pan by hand.
+
+You never have to carry the pan, and it can stay on your head. Most people wear theirs as a hat, which
+is where the ownership check looks first.
+
+### Trash cans
+
+The **Trash Cans** group is one row, and it rummages every trash can in the locations the grabber
+reaches — the eight around town, plus any a content pack has added, since they're found by reading the
+map rather than from a list. There's no row per can: the game's own IDs for them are internal handles
+like `JodiAndKent`, and which cans a grabber reaches is the scope tab's job anyway. A grabber sitting
+on the farm won't touch them; one set to *Everywhere I've been*, or with Town ticked under *Chosen
+locations*, will.
+
+Worth knowing before you tick it: **a can can only be searched once a day, by anyone.** This is the
+one target that takes something off your own to-do list — if a grabber gets to the cans first, they're
+empty when you walk past. The roll is the game's own, so daily luck and the Trash Book still apply, and
+what would have come out is what lands in the grabber.
+
+Nobody gets upset about it, either. Searching a can by hand costs you 25 friendship with whoever is
+standing nearby and gets announced in chat; a grabber doesn't make the walk and isn't seen doing it,
+the same reasoning that keeps milking from earning friendship.
 
 ### Animal products
 
@@ -118,13 +172,27 @@ Edit `config.json` or use [Generic Mod Config Menu](https://www.nexusmods.com/st
 | Setting | Default | Meaning |
 |---|---|---|
 | `DefaultFrequency` | `Hourly` | How often grabbers run unless one overrides it |
-| `RespectToolRequirements` | `true` | Large stumps need a copper axe, logs a steel axe, and so on |
+| `RespectToolRequirements` | `true` | Large stumps need a copper axe, logs a steel axe, and so on (see below) |
 | `GrantExperience` | `true` | Grant the skill experience harvesting by hand would give |
-| `ReplantCrops` | `true` | Replant a harvested crop when its seeds are in the grabber |
 | `SkipFestivalLocations` | `true` | Leave festival and event maps alone |
 | `DailySummary` | `true` | Report each day what the grabbers collected |
 | `VerboseLogging` | `false` | Log every pass in detail (see below) |
 | `SettingsButtonOffsetX` / `Y` | `0` | Nudge the **!** button if another mod's button overlaps it |
+
+### Tool requirements
+
+With `RespectToolRequirements` on, a grabber only takes what your tools could handle: a copper axe
+for large stumps, a steel axe for hollow logs, a steel pickaxe for boulders, a gold pickaxe for
+meteorites, any hoe for artifact and seed spots, any pan for panning spots.
+
+It counts a tool you **own**, not one you carry. The world is checked once a day, so a pickaxe left
+in a chest at home counts, and so does the tool sitting at Clint's forge during the two days of an
+upgrade, when it belongs to no inventory at all. A pan worn as a hat counts as a pan. Picking up a
+finished upgrade counts straight away.
+
+Because the game never records the level a tool was upgraded to, the best of each kind seen is
+remembered in your save: once you have owned a gold pickaxe, your grabbers keep mining meteorites
+even if that pickaxe is later lost or thrown away.
 
 ## Troubleshooting
 

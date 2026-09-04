@@ -21,6 +21,19 @@ internal enum ScopeMode
     Selected
 }
 
+/// <summary>Which seeds a grabber may put back in the soil after harvesting a crop.</summary>
+internal enum ReplantMode
+{
+    /// <summary>Leave the soil empty.</summary>
+    Never,
+
+    /// <summary>Replant the crop that was just harvested, when its seed is in the grabber.</summary>
+    MatchingSeed,
+
+    /// <summary>Replant the harvested crop's seed, or any other seed in the grabber when that one has run out.</summary>
+    AnySeed
+}
+
 /// <summary>The settings for one placed auto-grabber, stored on the grabber itself.</summary>
 /// <remarks>
 ///   These live in the grabber's <see cref="Object.modData" />, so they're saved with the game, survive
@@ -33,6 +46,7 @@ internal sealed class GrabberSettings
     private const string ScopeKey = GrabberSettings.KeyPrefix + "scope";
     private const string LocationsKey = GrabberSettings.KeyPrefix + "locations";
     private const string FrequencyKey = GrabberSettings.KeyPrefix + "frequency";
+    private const string ReplantKey = GrabberSettings.KeyPrefix + "replant";
 
     /// <summary>The IDs of the targets this grabber collects. Empty means it behaves exactly like a vanilla grabber.</summary>
     public HashSet<string> TargetIds { get; } = new();
@@ -45,6 +59,9 @@ internal sealed class GrabberSettings
 
     /// <summary>How often this grabber runs, or <see cref="GrabFrequency.Default" /> to follow the mod-wide setting.</summary>
     public GrabFrequency Frequency { get; set; } = GrabFrequency.Default;
+
+    /// <summary>Which seeds this grabber replants after harvesting a crop.</summary>
+    public ReplantMode Replant { get; set; } = ReplantMode.Never;
 
     /// <summary>Whether this grabber has been given anything to collect beyond what vanilla already gives it.</summary>
     public bool HasExtraTargets => this.TargetIds.Count > 0;
@@ -71,6 +88,9 @@ internal sealed class GrabberSettings
         if (grabber.modData.TryGetValue(GrabberSettings.FrequencyKey, out string? frequency) && Enum.TryParse(frequency, out GrabFrequency parsedFrequency))
             settings.Frequency = parsedFrequency;
 
+        if (grabber.modData.TryGetValue(GrabberSettings.ReplantKey, out string? replant) && Enum.TryParse(replant, out ReplantMode parsedReplant))
+            settings.Replant = parsedReplant;
+
         return settings;
     }
 
@@ -81,6 +101,7 @@ internal sealed class GrabberSettings
         GrabberSettings.Write(grabber, GrabberSettings.ScopeKey, this.Scope == ScopeMode.Local ? null : this.Scope.ToString());
         GrabberSettings.Write(grabber, GrabberSettings.LocationsKey, string.Join(",", this.SelectedLocations));
         GrabberSettings.Write(grabber, GrabberSettings.FrequencyKey, this.Frequency == GrabFrequency.Default ? null : this.Frequency.ToString());
+        GrabberSettings.Write(grabber, GrabberSettings.ReplantKey, this.Replant == ReplantMode.Never ? null : this.Replant.ToString());
     }
 
     /// <summary>Get the locations this grabber should sweep this pass.</summary>

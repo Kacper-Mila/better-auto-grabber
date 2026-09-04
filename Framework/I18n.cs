@@ -23,8 +23,10 @@ internal static class I18n
     public static string Target_MineBoulder() => I18n.Get("target.mine-boulder");
     public static string Target_ArtifactSpot() => I18n.Get("target.artifact-spot");
     public static string Target_SeedSpot() => I18n.Get("target.seed-spot");
+    public static string Target_PanningSpot() => I18n.Get("target.panning-spot");
     public static string Target_ShakeTrees() => I18n.Get("target.shake-trees");
     public static string Target_SlimeBall() => I18n.Get("target.slime-ball");
+    public static string Target_TrashCan() => I18n.Get("target.trash-can");
 
     public static string Group_Forage() => I18n.Get("group.forage");
     public static string Group_Crops() => I18n.Get("group.crops");
@@ -33,12 +35,14 @@ internal static class I18n
     public static string Group_Clumps() => I18n.Get("group.clumps");
     public static string Group_Digging() => I18n.Get("group.digging");
     public static string Group_Trees() => I18n.Get("group.trees");
+    public static string Group_TrashCans() => I18n.Get("group.trash-cans");
     public static string Group_Animals() => I18n.Get("group.animals");
     public static string Group_Machines() => I18n.Get("group.machines");
 
     public static string Menu_Title() => I18n.Get("menu.title");
     public static string Menu_TabTargets() => I18n.Get("menu.tab.targets");
     public static string Menu_TabScope() => I18n.Get("menu.tab.scope");
+    public static string Menu_TabBehaviour() => I18n.Get("menu.tab.behaviour");
     public static string Menu_SearchHint() => I18n.Get("menu.search-hint");
     public static string Menu_CheckAll() => I18n.Get("menu.check-all");
     public static string Menu_UncheckAll() => I18n.Get("menu.uncheck-all");
@@ -53,9 +57,15 @@ internal static class I18n
     public static string Scope_GlobalDesc() => I18n.Get("scope.global.desc");
     public static string Scope_Selected() => I18n.Get("scope.selected");
     public static string Scope_SelectedDesc() => I18n.Get("scope.selected.desc");
-    public static string Scope_Frequency() => I18n.Get("scope.frequency");
     public static string Scope_UnvisitedNote() => I18n.Get("scope.unvisited-note");
     public static string Scope_BuildingCount(int count) => I18n.Get("scope.building-count", new { count });
+
+    public static string Behaviour_Frequency() => I18n.Get("behaviour.frequency");
+    public static string Behaviour_Replant() => I18n.Get("behaviour.replant");
+
+    public static string Replant_Never() => I18n.Get("replant.never");
+    public static string Replant_MatchingSeed() => I18n.Get("replant.matching-seed");
+    public static string Replant_AnySeed() => I18n.Get("replant.any-seed");
 
     public static string Frequency_Default() => I18n.Get("frequency.default");
     public static string Frequency_TenMinutes() => I18n.Get("frequency.ten-minutes");

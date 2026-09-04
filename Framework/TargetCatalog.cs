@@ -55,8 +55,14 @@ internal static class TargetCatalog
     /// <summary>The target ID for seed spots.</summary>
     public const string SeedSpotId = "dig:seed";
 
+    /// <summary>The target ID for the glittering panning spot in a location's water.</summary>
+    public const string PanningSpotId = "dig:panning";
+
     /// <summary>The target ID for shaking wild trees.</summary>
     public const string ShakeTreesId = "tree:shake";
+
+    /// <summary>The target ID for rummaging in trash cans.</summary>
+    public const string TrashCanId = "trash:can";
 
     /// <summary>Build the target ID for an animal product.</summary>
     public static string AnimalId(string qualifiedItemId) => "animal:" + qualifiedItemId;
@@ -98,6 +104,7 @@ internal static class TargetCatalog
         TargetCatalog.AddClumps();
         TargetCatalog.AddDigging();
         TargetCatalog.AddTrees();
+        TargetCatalog.AddTrashCans();
         TargetCatalog.AddAnimals();
         TargetCatalog.AddMachines();
 
@@ -176,11 +183,17 @@ internal static class TargetCatalog
         TargetCatalog.Add(TargetCatalog.ClumpId(ResourceClump.mineRock1Index), I18n.Target_MineBoulder(), TargetGroup.Clumps, "(O)390");
     }
 
-    /// <summary>Add a row for each spot that has to be dug up.</summary>
+    /// <summary>Add a row for each spot that has to be worked with a tool for whatever it's hiding.</summary>
+    /// <remarks>
+    ///   A panning spot is panned rather than dug, but it belongs here rather than in a group of its
+    ///   own: it's the same bargain as the other two rows, one spot worked with one tool for a random
+    ///   handful, and a group with a single row in it would only be harder to find.
+    /// </remarks>
     private static void AddDigging()
     {
         TargetCatalog.Add(TargetCatalog.ArtifactSpotId, I18n.Target_ArtifactSpot(), TargetGroup.Digging, "(O)590");
         TargetCatalog.Add(TargetCatalog.SeedSpotId, I18n.Target_SeedSpot(), TargetGroup.Digging, "(O)SeedSpot");
+        TargetCatalog.Add(TargetCatalog.PanningSpotId, I18n.Target_PanningSpot(), TargetGroup.Digging, "(T)Pan");
     }
 
     /// <summary>Add the row for shaking wild trees.</summary>
@@ -192,6 +205,18 @@ internal static class TargetCatalog
     private static void AddTrees()
     {
         TargetCatalog.Add(TargetCatalog.ShakeTreesId, I18n.Target_ShakeTrees(), TargetGroup.Trees, "(O)309");
+    }
+
+    /// <summary>Add the row for rummaging in trash cans.</summary>
+    /// <remarks>
+    ///   One row rather than one per can, for the same reasons the scope tab lists building families
+    ///   rather than buildings: <c>Data/GarbageCans</c> keys are internal handles (<c>JodiAndKent</c>,
+    ///   <c>Mayor</c>) with nothing to label a row with, and the yield is a random roll either way.
+    ///   Which cans a grabber reaches is the scope tab's job, not this list's.
+    /// </remarks>
+    private static void AddTrashCans()
+    {
+        TargetCatalog.Add(TargetCatalog.TrashCanId, I18n.Target_TrashCan(), TargetGroup.TrashCans, "(O)168");
     }
 
     /// <summary>Add a row for every item a farm animal produces.</summary>
