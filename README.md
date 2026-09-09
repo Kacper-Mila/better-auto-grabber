@@ -80,11 +80,14 @@ Forage, crops (including indoor pots), fruit trees, bushes (including ones in ga
 stumps and logs, boulders and meteorites, artifact and seed spots, panning spots, tree shaking, trash
 cans, animal products, and machines.
 
-Two deliberate omissions:
+Three deliberate omissions:
 
 - **Giant crops** are never harvested. Plenty of people grow them as decoration, and felling one is
   destructive in a way nothing else on the list is.
 - **Golden walnut bushes** aren't collectable.
+- **Incubators** are never emptied. What one holds is the egg you gave it, and it reports itself ready
+  on the morning the timer runs out, before you get to the coop and the chick hatches. Taking it would
+  hand the egg back and cancel the hatch, so incubators are left off the list entirely.
 
 ### Panning spots
 
