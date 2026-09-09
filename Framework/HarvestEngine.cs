@@ -880,6 +880,13 @@ internal sealed class HarvestEngine
             if (machine is Chest || machine.QualifiedItemId == TargetCatalog.AutoGrabberItemId)
                 continue;
 
+            // An incubator holds the egg it was given until the coop hatches it, and reports itself
+            // ready the morning the timer runs out. Collecting it hands the egg back and cancels the
+            // hatch, so it's refused here as well as left off the list -- the wildcard doesn't consult
+            // the list.
+            if (machine.GetMachineData()?.IsIncubator == true)
+                continue;
+
             string targetId = TargetCatalog.MachineId(machine.QualifiedItemId);
             if (!settings.Wants(targetId))
                 continue;

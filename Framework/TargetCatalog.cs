@@ -6,6 +6,7 @@ using StardewValley.GameData.Crops;
 using StardewValley.GameData.FarmAnimals;
 using StardewValley.GameData.FruitTrees;
 using StardewValley.GameData.Locations;
+using StardewValley.GameData.Machines;
 using StardewValley.ItemTypeDefinitions;
 using StardewValley.TerrainFeatures;
 
@@ -362,7 +363,8 @@ internal static class TargetCatalog
     /// <summary>Add a row for every machine that can hold an output.</summary>
     private static void AddMachines()
     {
-        HashSet<string> machineIds = new(DataLoader.Machines(Game1.content).Keys);
+        Dictionary<string, MachineData> machines = DataLoader.Machines(Game1.content);
+        HashSet<string> machineIds = new(machines.Keys);
 
         // crab pots have their own class and their own collection rules, so they're listed explicitly
         machineIds.Add(TargetCatalog.CrabPotItemId);
@@ -373,6 +375,12 @@ internal static class TargetCatalog
         {
             // the auto-grabber is a machine too; letting one empty another is asking for trouble
             if (id == TargetCatalog.AutoGrabberItemId || ItemRegistry.GetData(id) == null)
+                continue;
+
+            // An incubator's output is the egg that was put into it, so there's nothing to collect that
+            // a player would want: taking it hands the egg back and cancels the hatch. Reading the flag
+            // rather than matching IDs covers the ostrich incubator and any a content pack declares.
+            if (machines.TryGetValue(id, out MachineData? data) && data.IsIncubator)
                 continue;
 
             TargetCatalog.Add(TargetCatalog.MachineId(id), TargetCatalog.NameOf(id), TargetGroup.Machines, id);
