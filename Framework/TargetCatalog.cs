@@ -15,11 +15,43 @@ namespace BetterAutoGrabber.Framework;
 /// <remarks>
 ///   This is rebuilt on save load rather than hardcoded, so items added by content packs show up on the
 ///   list alongside vanilla ones.
+///
+///   Enumeration only ever names things; it never decides what a grabber may take. Anything a data
+///   asset can't be read for -- a bush a framework mod grows, an item query that only resolves as it's
+///   spawned -- is covered by its group's wildcard row instead, so content this list has never heard of
+///   is still collectable the day it's installed. See <see cref="GrabberSettings.Wants" />.
 /// </remarks>
 internal static class TargetCatalog
 {
-    /// <summary>The catch-all row matching any forage the catalog didn't know about.</summary>
+    /// <summary>The wildcard row for the forage group.</summary>
+    /// <remarks>Named for what it was before groups had wildcards, because the ID is saved on grabbers.</remarks>
     public const string OtherForageId = "forage:*";
+
+    /// <summary>The wildcard row for the crops group.</summary>
+    public const string OtherCropsId = "crop:*";
+
+    /// <summary>The wildcard row for the fruit tree group.</summary>
+    public const string OtherFruitId = "fruit:*";
+
+    /// <summary>The wildcard row for the bush group.</summary>
+    public const string OtherBushesId = "bush:*";
+
+    /// <summary>The wildcard row for the animal group.</summary>
+    public const string OtherAnimalsId = "animal:*";
+
+    /// <summary>The wildcard row for the machine group.</summary>
+    public const string OtherMachinesId = "machine:*";
+
+    /// <summary>Every wildcard row's ID, which is what makes one recognisable as a wildcard.</summary>
+    private static readonly HashSet<string> Wildcards = new()
+    {
+        TargetCatalog.OtherForageId,
+        TargetCatalog.OtherCropsId,
+        TargetCatalog.OtherFruitId,
+        TargetCatalog.OtherBushesId,
+        TargetCatalog.OtherAnimalsId,
+        TargetCatalog.OtherMachinesId
+    };
 
     private static readonly List<HarvestTarget> Targets = new();
     private static readonly Dictionary<string, HarvestTarget> ByIdLookup = new();
@@ -32,6 +64,60 @@ internal static class TargetCatalog
     public static HarvestTarget? Get(string id)
     {
         return TargetCatalog.ByIdLookup.TryGetValue(id, out HarvestTarget? target) ? target : null;
+    }
+
+    /// <summary>Get the wildcard row that answers for a target when the grabber hasn't been asked about it, if its group has one.</summary>
+    /// <param name="targetId">The row's saved ID.</param>
+    /// <remarks>
+    ///   Groups whose rows are fixed and few -- stumps, dig spots, trees, trash cans -- have no wildcard:
+    ///   there's nothing a mod can add to them that the list wouldn't already show, so "everything else"
+    ///   would mean nothing.
+    /// </remarks>
+    public static string? WildcardFor(string targetId)
+    {
+        int separator = targetId.IndexOf(':');
+        if (separator < 0)
+            return null;
+
+        string wildcard = targetId[..separator] + ":*";
+        return wildcard == targetId || !TargetCatalog.Wildcards.Contains(wildcard)
+            ? null
+            : wildcard;
+    }
+
+    /// <summary>Get whether a row is a group's wildcard rather than a thing in its own right.</summary>
+    /// <param name="targetId">The row's saved ID.</param>
+    public static bool IsWildcard(string targetId) => TargetCatalog.Wildcards.Contains(targetId);
+
+    /// <summary>Get the wildcard row for a group, or <c>null</c> if it doesn't have one.</summary>
+    /// <param name="group">The group.</param>
+    public static string? WildcardForGroup(TargetGroup group)
+    {
+        return group switch
+        {
+            TargetGroup.Forage => TargetCatalog.OtherForageId,
+            TargetGroup.Crops => TargetCatalog.OtherCropsId,
+            TargetGroup.FruitTrees => TargetCatalog.OtherFruitId,
+            TargetGroup.Bushes => TargetCatalog.OtherBushesId,
+            TargetGroup.Animals => TargetCatalog.OtherAnimalsId,
+            TargetGroup.Machines => TargetCatalog.OtherMachinesId,
+            _ => null
+        };
+    }
+
+    /// <summary>Add a row for a bush yield the world turned out to hold, if it isn't listed already.</summary>
+    /// <param name="qualifiedItemId">The item the bush gives when shaken.</param>
+    /// <remarks>
+    ///   Bushes are the one group with no data asset behind them: what a bush drops is decided by
+    ///   <see cref="StardewValley.TerrainFeatures.Bush.GetShakeOffItem" />, which vanilla hardcodes and
+    ///   framework mods patch. So the rows for modded bushes are learned from the bushes themselves, and
+    ///   remembered in save data so a row doesn't disappear the moment its bush is out of season.
+    /// </remarks>
+    public static void AddDiscoveredBush(string qualifiedItemId)
+    {
+        HarvestTarget? added = TargetCatalog.Add(TargetCatalog.BushId(qualifiedItemId), TargetCatalog.NameOf(qualifiedItemId), TargetGroup.Bushes, qualifiedItemId);
+        if (added != null)
+            TargetCatalog.ByIdLookup[added.Id] = added;
     }
 
     /// <summary>Build the target ID for a forage item.</summary>
@@ -90,8 +176,12 @@ internal static class TargetCatalog
     /// <summary>The crab pot's qualified item ID, which is a machine the game handles specially.</summary>
     public const string CrabPotItemId = "(O)710";
 
+    /// <summary>The auto-grabber's own qualified item ID.</summary>
+    public const string AutoGrabberItemId = "(BC)165";
+
     /// <summary>Rebuild the catalog from the currently loaded game data.</summary>
-    public static void Rebuild()
+    /// <param name="discoveredBushDrops">The bush yields earlier days of this save have seen, which no data asset lists.</param>
+    public static void Rebuild(IEnumerable<string>? discoveredBushDrops = null)
     {
         TargetCatalog.Targets.Clear();
         TargetCatalog.ByIdLookup.Clear();
@@ -100,7 +190,7 @@ internal static class TargetCatalog
         TargetCatalog.AddForage();
         TargetCatalog.AddCrops();
         TargetCatalog.AddFruitTrees();
-        TargetCatalog.AddBushes();
+        TargetCatalog.AddBushes(discoveredBushDrops ?? Enumerable.Empty<string>());
         TargetCatalog.AddClumps();
         TargetCatalog.AddDigging();
         TargetCatalog.AddTrees();
@@ -127,12 +217,12 @@ internal static class TargetCatalog
             }
         }
 
+        // Forage can also be placed by event scripts, content packs and weather, none of which is listed
+        // in Data/Locations. This row answers for anything the loop below didn't name.
+        TargetCatalog.Add(TargetCatalog.OtherForageId, I18n.Target_EverythingElse(), TargetGroup.Forage, null);
+
         foreach (string id in TargetCatalog.SortByName(itemIds))
             TargetCatalog.Add(TargetCatalog.ForageId(id), TargetCatalog.NameOf(id), TargetGroup.Forage, id);
-
-        // Forage can also be placed by event scripts, content packs and weather, none of which is
-        // listed in Data/Locations. This row covers whatever the loop above couldn't enumerate.
-        TargetCatalog.Add(TargetCatalog.OtherForageId, I18n.Target_OtherForage(), TargetGroup.Forage, "(O)16");
     }
 
     /// <summary>Add a row for every crop's harvested item.</summary>
@@ -144,6 +234,8 @@ internal static class TargetCatalog
             if (data?.HarvestItemId != null)
                 TargetCatalog.CollectItemIds(data.HarvestItemId, null, itemIds);
         }
+
+        TargetCatalog.Add(TargetCatalog.OtherCropsId, I18n.Target_EverythingElse(), TargetGroup.Crops, null);
 
         foreach (string id in TargetCatalog.SortByName(itemIds))
             TargetCatalog.Add(TargetCatalog.CropId(id), TargetCatalog.NameOf(id), TargetGroup.Crops, id);
@@ -162,14 +254,32 @@ internal static class TargetCatalog
                 TargetCatalog.CollectItemIds(fruit.ItemId, fruit.RandomItemId, itemIds);
         }
 
+        TargetCatalog.Add(TargetCatalog.OtherFruitId, I18n.Target_EverythingElse(), TargetGroup.FruitTrees, null);
+
         foreach (string id in TargetCatalog.SortByName(itemIds))
             TargetCatalog.Add(TargetCatalog.FruitId(id), TargetCatalog.NameOf(id), TargetGroup.FruitTrees, id);
     }
 
     /// <summary>Add a row for each thing a bush can be shaken for.</summary>
-    private static void AddBushes()
+    /// <param name="discovered">The yields earlier days of this save saw bushes holding.</param>
+    /// <remarks>
+    ///   The three vanilla rows are hardcoded because the game hardcodes them: <c>Bush.GetShakeOffItem</c>
+    ///   is a switch on the bush's size with no data asset behind it. Everything else in this group is
+    ///   learned from the world by <see cref="DiscoveredBushes" />, which is how bushes grown by a
+    ///   framework mod get a row of their own without this mod knowing that framework exists.
+    /// </remarks>
+    private static void AddBushes(IEnumerable<string> discovered)
     {
-        foreach (string id in new[] { "(O)296", "(O)410", "(O)815" })
+        TargetCatalog.Add(TargetCatalog.OtherBushesId, I18n.Target_EverythingElse(), TargetGroup.Bushes, null);
+
+        HashSet<string> itemIds = new() { "(O)296", "(O)410", "(O)815" };
+        foreach (string id in discovered)
+        {
+            if (ItemRegistry.GetData(id) != null)
+                itemIds.Add(id);
+        }
+
+        foreach (string id in TargetCatalog.SortByName(itemIds))
             TargetCatalog.Add(TargetCatalog.BushId(id), TargetCatalog.NameOf(id), TargetGroup.Bushes, id);
     }
 
@@ -238,6 +348,8 @@ internal static class TargetCatalog
 
         TargetCatalog.AnimalProductIds.UnionWith(itemIds);
 
+        TargetCatalog.Add(TargetCatalog.OtherAnimalsId, I18n.Target_EverythingElse(), TargetGroup.Animals, null);
+
         foreach (string id in TargetCatalog.SortByName(itemIds))
             TargetCatalog.Add(TargetCatalog.AnimalId(id), TargetCatalog.NameOf(id), TargetGroup.Animals, id);
 
@@ -255,10 +367,12 @@ internal static class TargetCatalog
         // crab pots have their own class and their own collection rules, so they're listed explicitly
         machineIds.Add(TargetCatalog.CrabPotItemId);
 
+        TargetCatalog.Add(TargetCatalog.OtherMachinesId, I18n.Target_EverythingElse(), TargetGroup.Machines, null);
+
         foreach (string id in TargetCatalog.SortByName(machineIds))
         {
             // the auto-grabber is a machine too; letting one empty another is asking for trouble
-            if (id == "(BC)165" || ItemRegistry.GetData(id) == null)
+            if (id == TargetCatalog.AutoGrabberItemId || ItemRegistry.GetData(id) == null)
                 continue;
 
             TargetCatalog.Add(TargetCatalog.MachineId(id), TargetCatalog.NameOf(id), TargetGroup.Machines, id);
@@ -295,9 +409,15 @@ internal static class TargetCatalog
         return itemIds.OrderBy(TargetCatalog.NameOf, StringComparer.CurrentCultureIgnoreCase);
     }
 
-    private static void Add(string id, string displayName, TargetGroup group, string iconItemId)
+    /// <summary>Add a row, unless one with the same ID is already listed.</summary>
+    /// <returns>The row that was added, or <c>null</c> if it was already there.</returns>
+    private static HarvestTarget? Add(string id, string displayName, TargetGroup group, string? iconItemId)
     {
-        if (!TargetCatalog.Targets.Any(target => target.Id == id))
-            TargetCatalog.Targets.Add(new HarvestTarget(id, displayName, group, iconItemId));
+        if (TargetCatalog.Targets.Any(target => target.Id == id))
+            return null;
+
+        HarvestTarget target = new(id, displayName, group, iconItemId);
+        TargetCatalog.Targets.Add(target);
+        return target;
     }
 }

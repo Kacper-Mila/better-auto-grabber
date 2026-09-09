@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
@@ -27,14 +28,24 @@ internal sealed class HarvestEngine
     /// <summary>The best tool of each kind the player owns, which gates stumps, boulders and dig spots.</summary>
     private readonly ToolOwnership Tools;
 
+    /// <summary>The bush yields this save has seen, which is where the bush group's rows come from.</summary>
+    private readonly DiscoveredBushes Bushes;
+
+    /// <summary>Where Custom Bush parks the stack a bush is holding, so its bushes pay out what their pack promised.</summary>
+    private const string CustomBushStackKey = "furyx639.CustomBush/Stack";
+
+    /// <summary>Where Custom Bush parks the quality a bush rolled when it came into bloom.</summary>
+    private const string CustomBushQualityKey = "furyx639.CustomBush/Quality";
+
     /// <summary>The garbage cans found on each location's map, keyed by location, cached for the day.</summary>
     private readonly Dictionary<string, List<(Vector2 Tile, string Id)>> TrashCansByLocation = new();
 
-    public HarvestEngine(ModConfig config, IMonitor monitor, ToolOwnership tools)
+    public HarvestEngine(ModConfig config, IMonitor monitor, ToolOwnership tools, DiscoveredBushes bushes)
     {
         this.Config = config;
         this.Monitor = monitor;
         this.Tools = tools;
+        this.Bushes = bushes;
     }
 
     /// <summary>Run one harvest pass for a grabber.</summary>
@@ -64,7 +75,7 @@ internal sealed class HarvestEngine
                 this.SweepForage(location, settings, output);
                 this.SweepAnimals(location, settings, output);
                 this.SweepCrops(location, settings, output, chest);
-                this.SweepLargeTerrainFeatures(location, settings, output);
+                this.SweepBushes(location, settings, output);
                 this.SweepFruitTrees(location, settings, output);
                 this.SweepResourceClumps(location, settings, output);
                 this.SweepDigSpots(location, settings, output);
@@ -111,7 +122,7 @@ internal sealed class HarvestEngine
             if (TargetCatalog.IsAnimalProduct(obj.QualifiedItemId))
                 continue;
 
-            if (!this.WantsForage(settings, obj.QualifiedItemId))
+            if (!settings.Wants(TargetCatalog.ForageId(obj.QualifiedItemId)))
                 continue;
 
             bool isForage = obj.isForage();
@@ -126,16 +137,6 @@ internal sealed class HarvestEngine
             if (this.Config.GrantExperience && isForage && !location.isFarmBuildingInterior())
                 location.OnHarvestedForage(Game1.player, obj);
         }
-    }
-
-    /// <summary>Get whether a grabber wants a piece of forage, including through the catch-all row.</summary>
-    private bool WantsForage(GrabberSettings settings, string qualifiedItemId)
-    {
-        string id = TargetCatalog.ForageId(qualifiedItemId);
-        if (settings.TargetIds.Contains(id))
-            return true;
-
-        return settings.TargetIds.Contains(TargetCatalog.OtherForageId) && TargetCatalog.Get(id) == null;
     }
 
     /*********
@@ -166,7 +167,9 @@ internal sealed class HarvestEngine
             if (!obj.isSpawnedObject.Value || obj.questItem.Value)
                 continue;
 
-            if (!settings.TargetIds.Contains(TargetCatalog.AnimalId(obj.QualifiedItemId)))
+            // The group's wildcard answers for animal produce, not for everything lying on the floor,
+            // so what counts as produce is settled from the data before it's asked.
+            if (!TargetCatalog.IsAnimalProduct(obj.QualifiedItemId) || !settings.Wants(TargetCatalog.AnimalId(obj.QualifiedItemId)))
                 continue;
 
             // A truffle counts as forage to the game -- Object.isForage special-cases it by ID -- so it
@@ -191,7 +194,7 @@ internal sealed class HarvestEngine
     /// <summary>Pop the slime balls on a slime hutch floor.</summary>
     private void SweepSlimeBalls(GameLocation location, GrabberSettings settings, GrabberOutput output)
     {
-        if (!settings.TargetIds.Contains(TargetCatalog.SlimeBallId))
+        if (!settings.Wants(TargetCatalog.SlimeBallId))
             return;
 
         foreach ((Vector2 tile, Object obj) in location.objects.Pairs.ToArray())
@@ -236,7 +239,7 @@ internal sealed class HarvestEngine
                 continue;
 
             string? qualified = ItemRegistry.QualifyItemId(produceId);
-            if (qualified == null || !settings.TargetIds.Contains(TargetCatalog.AnimalId(qualified)))
+            if (qualified == null || !settings.Wants(TargetCatalog.AnimalId(qualified)))
                 continue;
 
             Object produce = ItemRegistry.Create<Object>(qualified);
@@ -287,13 +290,20 @@ internal sealed class HarvestEngine
             return;
 
         string? harvestId = HarvestEngine.GetCropHarvestId(dirt.crop);
-        if (harvestId == null || !settings.TargetIds.Contains(TargetCatalog.CropId(harvestId)))
+        if (harvestId == null || !settings.Wants(TargetCatalog.CropId(harvestId)))
             return;
 
-        string? seedId = dirt.crop.netSeedIndex.Value;
+        Crop crop = dirt.crop;
+        string? seedId = crop.netSeedIndex.Value;
         this.Harvester.Retarget(output, location, tile);
 
-        if (dirt.crop.harvest((int)tile.X, (int)tile.Y, dirt, this.Harvester))
+        // Vanilla hands every item to the harvester when one is passed, so nothing of its own lands on
+        // the ground here. The sweep is for mods that add drops to a harvest and scatter them the way a
+        // player's own harvest would; those would otherwise be left lying in the field.
+        bool harvested = false;
+        this.CaptureDebris(location, output, tile, () => harvested = crop.harvest((int)tile.X, (int)tile.Y, dirt, this.Harvester));
+
+        if (harvested)
         {
             dirt.destroyCrop(showAnimation: false);
             HarvestEngine.TryReplant(dirt, seedId, chest, settings.Replant);
@@ -387,15 +397,25 @@ internal sealed class HarvestEngine
     /*********
     ** Bushes
     *********/
-    /// <summary>Shake berry and tea bushes that are ready.</summary>
-    private void SweepLargeTerrainFeatures(GameLocation location, GrabberSettings settings, GrabberOutput output)
+    /// <summary>Shake the bushes here that are ready, wherever they're growing.</summary>
+    /// <remarks>
+    ///   What a bush gives is read off the bush itself rather than worked out from its species, which is
+    ///   what makes modded bushes work with no knowledge of the mod growing them: framework mods add
+    ///   theirs by patching <see cref="Bush.GetShakeOffItem" />, so the answer that comes back is already
+    ///   the pods or peppercorns the pack promised.
+    /// </remarks>
+    private void SweepBushes(GameLocation location, GrabberSettings settings, GrabberOutput output)
     {
-        foreach (LargeTerrainFeature feature in location.largeTerrainFeatures.ToArray())
+        foreach (Bush bush in DiscoveredBushes.GetBushes(location))
         {
             if (output.IsFull)
                 return;
 
-            if (feature is not Bush bush || bush.townBush.Value || !bush.readyForHarvest() || !bush.inBloom())
+            // Golden walnut bushes are shaped like any other harvestable bush, and were only ever safe
+            // because no row named walnuts. A group wildcard would answer for them, so they're refused
+            // outright: vanilla's shake is what records each nut as collected, and this pass doesn't
+            // call it.
+            if (bush.townBush.Value || bush.size.Value == Bush.walnutBush || !bush.readyForHarvest() || !bush.inBloom())
                 continue;
 
             string? shakeOff = bush.GetShakeOffItem();
@@ -403,7 +423,13 @@ internal sealed class HarvestEngine
                 continue;
 
             string? qualified = ItemRegistry.QualifyItemId(shakeOff);
-            if (qualified == null || !settings.TargetIds.Contains(TargetCatalog.BushId(qualified)))
+            if (qualified == null)
+                continue;
+
+            // seen is seen, whether or not this grabber is the one collecting it
+            this.Bushes.Note(qualified);
+
+            if (!settings.Wants(TargetCatalog.BushId(qualified)))
                 continue;
 
             bush.tileSheetOffset.Value = 0;
@@ -411,7 +437,8 @@ internal sealed class HarvestEngine
 
             if (bush.size.Value == Bush.greenTeaBush)
             {
-                output.Deposit(ItemRegistry.Create(qualified), location, bush.Tile);
+                (int stack, int quality) = HarvestEngine.GetCachedYield(bush);
+                output.Deposit(ItemRegistry.Create(qualified, stack, quality), location, bush.Tile);
                 continue;
             }
 
@@ -428,6 +455,29 @@ internal sealed class HarvestEngine
             if (this.Config.GrantExperience)
                 Game1.player.gainExperience(2, count);
         }
+    }
+
+    /// <summary>Get how much a tea-sized bush is holding, and at what quality.</summary>
+    /// <param name="bush">The bush being shaken.</param>
+    /// <remarks>
+    ///   A vanilla tea bush hands over one plain item, which is what the fallback says. A bush grown by a
+    ///   framework mod is tea-sized too, but rolled its stack and quality when it came into bloom and
+    ///   parked them in its own mod data; taking the fallback there would turn a pack's two-to-four
+    ///   berries into one, and throw its quality roll away. Reading two strings out of a dictionary needs
+    ///   nothing installed and nothing referenced: a bush without them is simply a vanilla one.
+    /// </remarks>
+    private static (int Stack, int Quality) GetCachedYield(Bush bush)
+    {
+        int stack = 1;
+        int quality = 0;
+
+        if (bush.modData.TryGetValue(HarvestEngine.CustomBushStackKey, out string? cachedStack) && int.TryParse(cachedStack, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedStack) && parsedStack > 0)
+            stack = parsedStack;
+
+        if (bush.modData.TryGetValue(HarvestEngine.CustomBushQualityKey, out string? cachedQuality) && int.TryParse(cachedQuality, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedQuality) && parsedQuality > 0)
+            quality = parsedQuality;
+
+        return (stack, quality);
     }
 
     /*********
@@ -447,7 +497,7 @@ internal sealed class HarvestEngine
                     return;
 
                 Item fruit = tree.fruit[i];
-                if (fruit == null || !settings.TargetIds.Contains(TargetCatalog.FruitId(fruit.QualifiedItemId)))
+                if (fruit == null || !settings.Wants(TargetCatalog.FruitId(fruit.QualifiedItemId)))
                     continue;
 
                 tree.fruit.RemoveAt(i);
@@ -473,7 +523,7 @@ internal sealed class HarvestEngine
                 continue;
 
             string targetId = TargetCatalog.ClumpId(HarvestEngine.NormalizeClumpIndex(clump.parentSheetIndex.Value));
-            if (!settings.TargetIds.Contains(targetId))
+            if (!settings.Wants(targetId))
                 continue;
 
             if (!this.HasToolFor(targetId))
@@ -565,7 +615,7 @@ internal sealed class HarvestEngine
                 continue;
 
             string targetId = isSeedSpot ? TargetCatalog.SeedSpotId : TargetCatalog.ArtifactSpotId;
-            if (!settings.TargetIds.Contains(targetId))
+            if (!settings.Wants(targetId))
                 continue;
 
             if (!this.HasToolFor(targetId))
@@ -605,7 +655,7 @@ internal sealed class HarvestEngine
         if (output.IsFull || location.orePanPoint.Value == Point.Zero)
             return;
 
-        if (!settings.TargetIds.Contains(TargetCatalog.PanningSpotId))
+        if (!settings.Wants(TargetCatalog.PanningSpotId))
             return;
 
         if (!this.HasToolFor(TargetCatalog.PanningSpotId))
@@ -677,7 +727,7 @@ internal sealed class HarvestEngine
     /// </remarks>
     private void SweepTrees(GameLocation location, GrabberSettings settings, GrabberOutput output)
     {
-        if (!settings.TargetIds.Contains(TargetCatalog.ShakeTreesId))
+        if (!settings.Wants(TargetCatalog.ShakeTreesId))
             return;
 
         foreach ((Vector2 tile, TerrainFeature feature) in location.terrainFeatures.Pairs.ToArray())
@@ -713,7 +763,7 @@ internal sealed class HarvestEngine
     /// </remarks>
     private void SweepTrashCans(GameLocation location, GrabberSettings settings, GrabberOutput output)
     {
-        if (!settings.TargetIds.Contains(TargetCatalog.TrashCanId))
+        if (!settings.Wants(TargetCatalog.TrashCanId))
             return;
 
         ISet<string> checkedToday = Game1.netWorldState.Value.CheckedGarbage;
@@ -824,12 +874,22 @@ internal sealed class HarvestEngine
             if (output.IsFull)
                 return;
 
-            if (machine is Chest || !settings.TargetIds.Contains(TargetCatalog.MachineId(machine.QualifiedItemId)))
+            // An auto-grabber is a machine like any other, and the catalog leaves it off the list so
+            // that one can't empty another. The group's wildcard doesn't consult the list, so the same
+            // refusal has to be made here.
+            if (machine is Chest || machine.QualifiedItemId == TargetCatalog.AutoGrabberItemId)
+                continue;
+
+            string targetId = TargetCatalog.MachineId(machine.QualifiedItemId);
+            if (!settings.Wants(targetId))
                 continue;
 
             if (!machine.readyForHarvest.Value || machine.heldObject.Value == null)
             {
-                output.Report.Skip($"{machine.DisplayName}: nothing ready to collect");
+                // Only worth saying about a machine the player picked out. Under a wildcard this would
+                // otherwise report every empty keg and every piece of furniture on the map.
+                if (settings.IsExplicit(targetId))
+                    output.Report.Skip($"{machine.DisplayName}: nothing ready to collect");
                 continue;
             }
 

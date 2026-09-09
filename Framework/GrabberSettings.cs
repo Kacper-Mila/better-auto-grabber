@@ -43,13 +43,26 @@ internal sealed class GrabberSettings
 {
     private const string KeyPrefix = "Kacper.BetterAutoGrabber/";
     private const string TargetsKey = GrabberSettings.KeyPrefix + "targets";
+    private const string DeniedKey = GrabberSettings.KeyPrefix + "denied";
+    private const string SchemaKey = GrabberSettings.KeyPrefix + "schema";
     private const string ScopeKey = GrabberSettings.KeyPrefix + "scope";
     private const string LocationsKey = GrabberSettings.KeyPrefix + "locations";
     private const string FrequencyKey = GrabberSettings.KeyPrefix + "frequency";
     private const string ReplantKey = GrabberSettings.KeyPrefix + "replant";
 
+    /// <summary>The schema the settings on a grabber are written in, so older ones can be read as they were meant.</summary>
+    private const int CurrentSchema = 2;
+
     /// <summary>The IDs of the targets this grabber collects. Empty means it behaves exactly like a vanilla grabber.</summary>
+    /// <remarks>A group's wildcard row is stored here like any other ID.</remarks>
     public HashSet<string> TargetIds { get; } = new();
+
+    /// <summary>The IDs of the targets this grabber has been told to leave alone.</summary>
+    /// <remarks>
+    ///   Only meaningful under a wildcard: without one, a row that isn't in <see cref="TargetIds" /> is
+    ///   left alone anyway. This is what lets "everything in this group except that one" be said at all.
+    /// </remarks>
+    public HashSet<string> DeniedIds { get; } = new();
 
     /// <summary>Which locations this grabber reaches.</summary>
     public ScopeMode Scope { get; set; } = ScopeMode.Local;
@@ -73,6 +86,12 @@ internal sealed class GrabberSettings
 
         if (grabber.modData.TryGetValue(GrabberSettings.TargetsKey, out string? targets))
             settings.TargetIds.UnionWith(GrabberSettings.Split(targets));
+
+        if (grabber.modData.TryGetValue(GrabberSettings.DeniedKey, out string? denied))
+            settings.DeniedIds.UnionWith(GrabberSettings.Split(denied));
+
+        if (!grabber.modData.TryGetValue(GrabberSettings.SchemaKey, out string? schema) || !int.TryParse(schema, out int version) || version < 2)
+            settings.UpgradeToWildcards();
 
         if (grabber.modData.TryGetValue(GrabberSettings.ScopeKey, out string? scope) && Enum.TryParse(scope, out ScopeMode parsedScope))
             settings.Scope = parsedScope;
@@ -98,10 +117,58 @@ internal sealed class GrabberSettings
     public void Save(Object grabber)
     {
         GrabberSettings.Write(grabber, GrabberSettings.TargetsKey, string.Join(",", this.TargetIds));
+        GrabberSettings.Write(grabber, GrabberSettings.DeniedKey, string.Join(",", this.DeniedIds));
+        GrabberSettings.Write(grabber, GrabberSettings.SchemaKey, GrabberSettings.CurrentSchema.ToString());
         GrabberSettings.Write(grabber, GrabberSettings.ScopeKey, this.Scope == ScopeMode.Local ? null : this.Scope.ToString());
         GrabberSettings.Write(grabber, GrabberSettings.LocationsKey, string.Join(",", this.SelectedLocations));
         GrabberSettings.Write(grabber, GrabberSettings.FrequencyKey, this.Frequency == GrabFrequency.Default ? null : this.Frequency.ToString());
         GrabberSettings.Write(grabber, GrabberSettings.ReplantKey, this.Replant == ReplantMode.Never ? null : this.Replant.ToString());
+    }
+
+    /// <summary>Get whether this grabber collects a target.</summary>
+    /// <param name="targetId">The row's saved ID.</param>
+    /// <remarks>
+    ///   A row has three answers, not two. Ticked means yes and crossed means no, both of them the
+    ///   player's own words; a row they've never touched has no answer at all, and the group's wildcard
+    ///   row speaks for it. That third state is what keeps a grabber's behaviour steady as mods come and
+    ///   go: the day something the list has never seen gets a row of its own, the row starts out unasked,
+    ///   so it keeps being collected under the wildcard instead of quietly stopping.
+    /// </remarks>
+    public bool Wants(string targetId)
+    {
+        if (this.TargetIds.Contains(targetId))
+            return true;
+
+        if (this.DeniedIds.Contains(targetId))
+            return false;
+
+        string? wildcard = TargetCatalog.WildcardFor(targetId);
+        return wildcard != null && this.TargetIds.Contains(wildcard);
+    }
+
+    /// <summary>Get whether a target was ticked by hand, rather than answered for by a wildcard.</summary>
+    /// <param name="targetId">The row's saved ID.</param>
+    public bool IsExplicit(string targetId) => this.TargetIds.Contains(targetId);
+
+    /// <summary>Read settings written before wildcards answered for untouched rows.</summary>
+    /// <remarks>
+    ///   Forage is the only group that had a catch-all row before this, and it used to cover just the
+    ///   items the catalog couldn't name. Under the new rule it would also cover every forage row left
+    ///   unticked, which would quietly widen what an existing grabber collects, so those rows are written
+    ///   down as refusals here. No other group needs this: with no wildcard to inherit from, an untouched
+    ///   row and a refused one behave identically, and ticking a group's new wildcard later is a player
+    ///   asking for the rest of the group on purpose.
+    /// </remarks>
+    private void UpgradeToWildcards()
+    {
+        if (!this.TargetIds.Contains(TargetCatalog.OtherForageId))
+            return;
+
+        foreach (HarvestTarget target in TargetCatalog.All)
+        {
+            if (target.Group == TargetGroup.Forage && !TargetCatalog.IsWildcard(target.Id) && !this.TargetIds.Contains(target.Id))
+                this.DeniedIds.Add(target.Id);
+        }
     }
 
     /// <summary>Get the locations this grabber should sweep this pass.</summary>

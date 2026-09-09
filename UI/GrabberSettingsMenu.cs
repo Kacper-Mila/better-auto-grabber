@@ -45,6 +45,13 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
     /// <summary>The texture box drawn behind action buttons.</summary>
     private static readonly Rectangle ButtonSource = new(432, 439, 9, 9);
 
+    /// <summary>The question mark drawn beside a wildcard row, which is the game's own help icon.</summary>
+    /// <remarks>
+    ///   A wildcard row isn't a thing, it's a rule about the things below it, so it gets no item sprite.
+    ///   Any item picked for it would read as one more row in the group.
+    /// </remarks>
+    private static readonly Rectangle WildcardIconSource = new(240, 192, 16, 16);
+
     private readonly Object Grabber;
     private readonly GrabberSettings Settings;
     private readonly ModConfig Config;
@@ -63,6 +70,10 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
 
     /// <summary>Where the mouse is, for drawing hover states.</summary>
     private Point Hover;
+
+    /// <summary>The hover text for the row under the cursor, or <c>null</c>. Set as the rows are drawn,
+    /// so it uses the same bounds the highlight does.</summary>
+    private string? HoverTooltip;
 
     /// <summary>Where each visible dropdown row's closed box sits, by row index. Rebuilt as the list is drawn.</summary>
     private readonly Dictionary<int, Rectangle> DropdownBounds = new();
@@ -301,6 +312,12 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
             this.ScrollDown.draw(b);
 
         base.draw(b);
+
+        // after the menu and before the cursor, so it sits on top of the list but under the pointer.
+        // An open dropdown covers the rows, so whatever the cursor was over isn't showing any more.
+        if (this.HoverTooltip != null && this.OpenDropdown < 0)
+            IClickableMenu.drawHoverText(b, Game1.parseText(this.HoverTooltip, Game1.smallFont, 640), Game1.smallFont);
+
         this.drawMouse(b);
     }
 
@@ -346,9 +363,20 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
 
     private string FooterText()
     {
-        return this.Settings.TargetIds.Count == 0
-            ? I18n.Menu_NothingSelected()
-            : I18n.Menu_SelectedCount(this.Settings.TargetIds.Count);
+        if (this.Settings.TargetIds.Count == 0)
+            return I18n.Menu_NothingSelected();
+
+        // Wildcards aren't things, so counting them among the ticks would read as "1 selected" for a
+        // grabber set to collect every crop there is.
+        int named = this.Settings.TargetIds.Count(id => !TargetCatalog.IsWildcard(id));
+        int wildcards = this.Settings.TargetIds.Count - named;
+
+        if (wildcards == 0)
+            return I18n.Menu_SelectedCount(named);
+
+        return named > 0
+            ? I18n.Menu_SelectedCountWithGroups(named, wildcards)
+            : I18n.Menu_SelectedGroups(wildcards);
     }
 
     /// <summary>Rebuild the visible rows for the current tab and search text.</summary>
@@ -396,41 +424,127 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
             if (matches.Count == 0)
                 continue;
 
-            int selected = matches.Count(target => this.Settings.TargetIds.Contains(target.Id));
-            this.Rows.Add(new ListRow
-            {
-                Label = GrabberSettingsMenu.GroupName(group),
-                IsHeader = true,
-                Suffix = selected == matches.Count ? I18n.Menu_UncheckAll() : I18n.Menu_CheckAll(),
-                SuffixIsButton = true,
-                IsChecked = () => false,
-                Toggle = () =>
-                {
-                    if (selected == matches.Count)
-                        this.Settings.TargetIds.ExceptWith(matches.Select(target => target.Id));
-                    else
-                        this.Settings.TargetIds.UnionWith(matches.Select(target => target.Id));
-                }
-            });
+            this.AddGroupHeader(group, matches);
 
             foreach (HarvestTarget target in matches)
-            {
-                this.Rows.Add(new ListRow
-                {
-                    Label = target.DisplayName,
-                    IconItemId = target.IconItemId,
-                    IsChecked = () => this.Settings.TargetIds.Contains(target.Id),
-                    Toggle = () =>
-                    {
-                        if (!this.Settings.TargetIds.Add(target.Id))
-                            this.Settings.TargetIds.Remove(target.Id);
-                    }
-                });
-            }
+                this.AddTargetRow(target, group);
         }
 
         if (this.Rows.Count == 0)
             this.Rows.Add(new ListRow { Label = I18n.Menu_NoResults(), IsHeader = true });
+    }
+
+    /// <summary>Add a group's heading, with the button that answers for the whole group at once.</summary>
+    /// <param name="group">The group being listed.</param>
+    /// <param name="matches">The group's rows that the current search left showing.</param>
+    private void AddGroupHeader(TargetGroup group, List<HarvestTarget> matches)
+    {
+        string? wildcard = TargetCatalog.WildcardForGroup(group);
+        List<string> ids = matches.Select(target => target.Id).ToList();
+        List<string> named = ids.Where(id => !TargetCatalog.IsWildcard(id)).ToList();
+
+        bool wildcardOn = wildcard != null && this.Settings.TargetIds.Contains(wildcard);
+
+        // A search narrows a group to some of its rows, and the button then speaks for those rows only.
+        bool wholeGroup = wildcard != null && ids.Contains(wildcard);
+        int denied = named.Count(id => this.Settings.DeniedIds.Contains(id));
+        bool everything = wildcardOn
+            ? denied == 0
+            : named.Count > 0 && named.All(id => this.Settings.TargetIds.Contains(id));
+
+        this.Rows.Add(new ListRow
+        {
+            Label = GrabberSettingsMenu.GroupName(group) + GrabberSettingsMenu.GroupSummary(wildcardOn, everything, denied),
+            IsHeader = true,
+            Suffix = everything ? I18n.Menu_UncheckAll() : I18n.Menu_CheckAll(),
+            SuffixIsButton = true,
+            IsChecked = () => false,
+            Toggle = () =>
+            {
+                if (everything)
+                {
+                    this.Settings.TargetIds.ExceptWith(ids);
+
+                    // Rows the wildcard still answers for have to be refused rather than merely
+                    // unticked, or unchecking a search's worth of rows would leave them all collected.
+                    if (wildcardOn && !wholeGroup)
+                        this.Settings.DeniedIds.UnionWith(named);
+                    else
+                        this.Settings.DeniedIds.ExceptWith(ids);
+
+                    return;
+                }
+
+                this.Settings.DeniedIds.ExceptWith(ids);
+
+                // A wildcard says "and whatever else turns up" in a way ticking each row can't, so it's
+                // what check-all means for a whole group. A searched-down list ticks what it shows.
+                if (wholeGroup)
+                    this.Settings.TargetIds.Add(wildcard!);
+                else
+                    this.Settings.TargetIds.UnionWith(ids);
+            }
+        });
+    }
+
+    /// <summary>Add one target's row, which answers yes, no, or nothing at all.</summary>
+    /// <param name="target">The target the row stands for.</param>
+    /// <param name="group">The group it's listed under.</param>
+    private void AddTargetRow(HarvestTarget target, TargetGroup group)
+    {
+        string id = target.Id;
+        string? wildcard = TargetCatalog.IsWildcard(id) ? null : TargetCatalog.WildcardForGroup(group);
+
+        this.Rows.Add(new ListRow
+        {
+            Label = target.DisplayName,
+            IconItemId = target.IconItemId,
+            IconCursorSource = target.IconItemId == null ? GrabberSettingsMenu.WildcardIconSource : null,
+            Tooltip = TargetCatalog.IsWildcard(id) ? I18n.Target_EverythingElseTooltip() : null,
+            IsChecked = () => this.Settings.Wants(id),
+            Check = () =>
+            {
+                if (this.Settings.TargetIds.Contains(id))
+                    return RowCheck.On;
+                if (this.Settings.DeniedIds.Contains(id))
+                    return wildcard != null && this.Settings.TargetIds.Contains(wildcard) ? RowCheck.Denied : RowCheck.Off;
+
+                return wildcard != null && this.Settings.TargetIds.Contains(wildcard) ? RowCheck.Inherited : RowCheck.Off;
+            },
+            Toggle = () =>
+            {
+                // With the group's wildcard on, a row is already being collected whether it's ticked or
+                // untouched, so the only answer left to give is a refusal. With it off, the row is an
+                // ordinary tick and any refusal it was carrying has nothing left to refuse.
+                if (wildcard != null && this.Settings.TargetIds.Contains(wildcard))
+                {
+                    if (!this.Settings.DeniedIds.Remove(id))
+                    {
+                        this.Settings.TargetIds.Remove(id);
+                        this.Settings.DeniedIds.Add(id);
+                    }
+                    return;
+                }
+
+                this.Settings.DeniedIds.Remove(id);
+                if (!this.Settings.TargetIds.Add(id))
+                    this.Settings.TargetIds.Remove(id);
+            }
+        });
+    }
+
+    /// <summary>Describe what a group is set to, for the text beside its heading.</summary>
+    /// <param name="wildcardOn">Whether the group's wildcard row is ticked.</param>
+    /// <param name="everything">Whether the group is collected in full.</param>
+    /// <param name="denied">How many of the group's rows are crossed out.</param>
+    private static string GroupSummary(bool wildcardOn, bool everything, int denied)
+    {
+        if (everything)
+            return "  " + I18n.Menu_Everything();
+
+        return wildcardOn && denied > 0
+            ? "  " + I18n.Menu_AllBut(denied)
+            : "";
     }
 
     /// <summary>Build the scope tab: reach, frequency, and the location picker when it applies.</summary>
@@ -527,6 +641,7 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
     private void DrawRows(SpriteBatch b)
     {
         this.DropdownBounds.Clear();
+        this.HoverTooltip = null;
         int y = this.ListTop();
 
         for (int i = this.ScrollIndex; i < this.Rows.Count && i < this.ScrollIndex + this.VisibleRows; i++)
@@ -539,7 +654,10 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
             // anything that responds to a click lights up under the cursor
             bool interactive = !row.Greyed && (!row.IsHeader || row.SuffixIsButton || row.IsDropdown);
             if (interactive && rowBounds.Contains(this.Hover))
+            {
                 b.Draw(Game1.staminaRect, rowBounds, Color.Wheat * 0.35f);
+                this.HoverTooltip = row.Tooltip;
+            }
 
             if (row.IsHeader || row.IsDropdown)
             {
@@ -547,23 +665,42 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
             }
             else
             {
-                b.Draw(Game1.mouseCursors, new Vector2(x, y + 12), row.IsChecked() ? OptionsCheckbox.sourceRectChecked : OptionsCheckbox.sourceRectUnchecked, Color.White * alpha, 0f, Vector2.Zero, 4f, SpriteEffects.None, 0.4f);
+                // A row answered for by its group's wildcard is drawn ticked but faded: it's collected,
+                // and the fade is what says the answer came from the heading rather than from the player.
+                RowCheck check = row.Check?.Invoke() ?? (row.IsChecked() ? RowCheck.On : RowCheck.Off);
+                bool ticked = check is RowCheck.On or RowCheck.Inherited;
+                float checkAlpha = alpha * (check == RowCheck.Inherited ? 0.55f : 1f);
+
+                b.Draw(Game1.mouseCursors, new Vector2(x, y + 12), ticked ? OptionsCheckbox.sourceRectChecked : OptionsCheckbox.sourceRectUnchecked, Color.White * checkAlpha, 0f, Vector2.Zero, 4f, SpriteEffects.None, 0.4f);
 
                 int textX = x + 56;
+                Texture2D? iconTexture = null;
+                Rectangle iconSource = Rectangle.Empty;
+
                 if (row.IconItemId != null)
                 {
-                    const float box = 40f;
                     ParsedItemData data = ItemRegistry.GetDataOrErrorItem(row.IconItemId);
-                    Rectangle source = data.GetSourceRect();
+                    iconTexture = data.GetTexture();
+                    iconSource = data.GetSourceRect();
+                }
+                else if (row.IconCursorSource != null)
+                {
+                    iconTexture = Game1.mouseCursors;
+                    iconSource = row.IconCursorSource.Value;
+                }
+
+                if (iconTexture != null)
+                {
+                    const float box = 40f;
 
                     // a keg's sprite is 16x32 where a parsnip's is 16x16, so each is scaled to fit the
                     // same square and centred in it rather than spilling into the rows above and below
-                    float scale = box / Math.Max(source.Width, source.Height);
+                    float scale = box / Math.Max(iconSource.Width, iconSource.Height);
                     Vector2 position = new(
-                        textX + (box - source.Width * scale) / 2f,
-                        y + (GrabberSettingsMenu.RowHeight - 8 - source.Height * scale) / 2f);
+                        textX + (box - iconSource.Width * scale) / 2f,
+                        y + (GrabberSettingsMenu.RowHeight - 8 - iconSource.Height * scale) / 2f);
 
-                    b.Draw(data.GetTexture(), position, source, Color.White * alpha, 0f, Vector2.Zero, scale, SpriteEffects.None, 0.9f);
+                    b.Draw(iconTexture, position, iconSource, Color.White * alpha, 0f, Vector2.Zero, scale, SpriteEffects.None, 0.9f);
                     textX += 52;
                 }
 

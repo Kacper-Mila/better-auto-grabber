@@ -32,10 +32,11 @@ internal sealed class HarvestTarget
     /// <summary>The section this row is listed under.</summary>
     public TargetGroup Group { get; }
 
-    /// <summary>The qualified item ID whose sprite is drawn beside the row.</summary>
-    public string IconItemId { get; }
+    /// <summary>The qualified item ID whose sprite is drawn beside the row, or <c>null</c> for a row that
+    /// stands for no item in particular.</summary>
+    public string? IconItemId { get; }
 
-    public HarvestTarget(string id, string displayName, TargetGroup group, string iconItemId)
+    public HarvestTarget(string id, string displayName, TargetGroup group, string? iconItemId)
     {
         this.Id = id;
         this.DisplayName = displayName;
