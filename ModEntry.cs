@@ -32,6 +32,9 @@ internal sealed class ModEntry : Mod
     /// <summary>The best tool of each kind the player owns, used for the tool requirement gate.</summary>
     private ToolOwnership Tools = null!;
 
+    /// <summary>What the bushes in this save have been seen holding, which is where the bush rows come from.</summary>
+    private DiscoveredBushes Bushes = null!;
+
     /// <summary>How much each grabber collected today, keyed by the location it stands in.</summary>
     private readonly Dictionary<string, int> DailyTally = new();
 
@@ -50,7 +53,8 @@ internal sealed class ModEntry : Mod
         this.Config = helper.ReadConfig<ModConfig>();
         I18n.Init(helper.Translation);
         this.Tools = new ToolOwnership(helper.Data, this.Monitor);
-        this.Engine = new HarvestEngine(this.Config, this.Monitor, this.Tools);
+        this.Bushes = new DiscoveredBushes(helper.Data, this.Monitor);
+        this.Engine = new HarvestEngine(this.Config, this.Monitor, this.Tools, this.Bushes);
 
         AutoGrabberPatches.Apply(new Harmony(this.ModManifest.UniqueID), this.Monitor);
 
@@ -82,7 +86,8 @@ internal sealed class ModEntry : Mod
     /// <summary>Build the target list from the loaded game data.</summary>
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
-        TargetCatalog.Rebuild();
+        this.Bushes.Load();
+        TargetCatalog.Rebuild(this.Bushes.Yields);
         this.Tools.Load();
 
         string breakdown = string.Join(", ", TargetCatalog.All
@@ -100,6 +105,7 @@ internal sealed class ModEntry : Mod
         this.FullGrabbers.Clear();
         this.Engine.ClearDailyCaches();
         this.Tools.Refresh();
+        this.Bushes.Refresh();
         this.RunGrabbers(atDayStart: true);
     }
 
@@ -371,7 +377,10 @@ internal sealed class ModEntry : Mod
     {
         string targets = settings.TargetIds.Count == 0
             ? "nothing (animal products only)"
-            : string.Join(", ", settings.TargetIds.Select(id => TargetCatalog.Get(id)?.DisplayName ?? id).OrderBy(name => name));
+            : string.Join(", ", settings.TargetIds.Select(ModEntry.DescribeTarget).OrderBy(name => name));
+
+        if (settings.DeniedIds.Count > 0)
+            targets += $" | except {string.Join(", ", settings.DeniedIds.Select(ModEntry.DescribeTarget).OrderBy(name => name))}";
 
         string reach = locations != null
             ? string.Join(", ", locations.Select(location => location.NameOrUniqueName))
@@ -383,6 +392,16 @@ internal sealed class ModEntry : Mod
         return $"Grabber at {home.NameOrUniqueName} ({grabber.TileLocation.X}, {grabber.TileLocation.Y})"
             + $" | runs {settings.Frequency} | scope {settings.Scope} -> {reach}"
             + $" | grabs {settings.TargetIds.Count}: {targets}";
+    }
+
+    /// <summary>Name one row for the console listing, marking the wildcards for what they are.</summary>
+    /// <param name="targetId">The row's saved ID.</param>
+    private static string DescribeTarget(string targetId)
+    {
+        string name = TargetCatalog.Get(targetId)?.DisplayName ?? targetId;
+        return TargetCatalog.IsWildcard(targetId)
+            ? $"{name} ({targetId})"
+            : name;
     }
 
     /// <summary>Get every placed auto-grabber, ordered so narrower grabbers get first pick.</summary>

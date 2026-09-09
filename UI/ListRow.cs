@@ -1,6 +1,23 @@
 using System;
+using Microsoft.Xna.Framework;
 
 namespace BetterAutoGrabber.UI;
+
+/// <summary>How a row's checkbox is drawn, which is what its three-way answer looks like on screen.</summary>
+internal enum RowCheck
+{
+    /// <summary>Not collected, and nothing is speaking for it.</summary>
+    Off,
+
+    /// <summary>Ticked by hand.</summary>
+    On,
+
+    /// <summary>Not ticked, but collected anyway because the group's wildcard row answers for it.</summary>
+    Inherited,
+
+    /// <summary>Crossed out by hand, so the group's wildcard row doesn't reach it.</summary>
+    Denied
+}
 
 /// <summary>One line in a scrolling checkbox list.</summary>
 internal sealed class ListRow
@@ -11,14 +28,24 @@ internal sealed class ListRow
     /// <summary>The qualified item ID whose sprite is drawn beside the label, if any.</summary>
     public string? IconItemId { get; init; }
 
+    /// <summary>A sprite from <c>Game1.mouseCursors</c> drawn beside the label, for a row that stands for
+    /// no item in particular.</summary>
+    public Rectangle? IconCursorSource { get; init; }
+
     /// <summary>Whether this row is a section heading rather than a checkbox.</summary>
     public bool IsHeader { get; init; }
 
     /// <summary>Whether the row's checkbox is ticked.</summary>
     public Func<bool> IsChecked { get; init; } = () => false;
 
+    /// <summary>How the row's checkbox should be drawn, for the target rows that have more than two answers.</summary>
+    public Func<RowCheck>? Check { get; init; }
+
     /// <summary>Toggle the row.</summary>
     public Action Toggle { get; init; } = () => { };
+
+    /// <summary>The hover text shown for the row, if it needs explaining.</summary>
+    public string? Tooltip { get; init; }
 
     /// <summary>Whether the row is shown as unavailable.</summary>
     public bool Greyed { get; init; }

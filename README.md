@@ -18,6 +18,16 @@ log is listed as the log, because "hardwood" doesn't say where it should come fr
 listed by machine. Nothing is ticked by default. Searching matches row names and group names, so
 typing "animal" lists the whole Animals group rather than nothing.
 
+**Everything else here** is the first row of most groups, and it answers for every row you haven't
+answered yourself. Tick it under Bushes and the grabber takes whatever any bush gives it, named on the
+list or not, including bushes a mod adds later. Rows it speaks for show a faded tick; click one to
+cross it out and that single thing is left alone. So "every crop except sweet gem berries" is two
+clicks, and it goes on meaning that as your mod list grows.
+
+Turning the group row off again leaves your individual ticks exactly as they were, so it is safe to
+try. Groups whose rows are fixed and few - stumps and boulders, digging, trees, trash cans - have no
+such row, because there is nothing for it to cover.
+
 **Where from** sets the grabber's reach:
 
 | Scope | Meaning |
@@ -66,15 +76,30 @@ empty soil.
 
 ## What it can collect
 
-Forage, crops (including indoor pots), fruit trees, berry and tea bushes, large stumps and logs,
-boulders and meteorites, artifact and seed spots, panning spots, tree shaking, trash cans, animal
-products, and machines.
+Forage, crops (including indoor pots), fruit trees, bushes (including ones in garden pots), large
+stumps and logs, boulders and meteorites, artifact and seed spots, panning spots, tree shaking, trash
+cans, animal products, and machines.
 
 Two deliberate omissions:
 
 - **Giant crops** are never harvested. Plenty of people grow them as decoration, and felling one is
   destructive in a way nothing else on the list is.
 - **Golden walnut bushes** aren't collectable.
+
+## Modded content
+
+Nothing extra to install, and nothing to configure. Rows are built from the game's own data at load
+time, so crops, fruit, forage, animals and machines added by a content pack are on the list the first
+time you open a grabber after installing it.
+
+Bushes are the exception, because the game has no data file for them: what a bush gives is decided in
+code, which is why mods that add bushes do it by changing what an existing bush answers. This mod asks
+the bush rather than assuming, so a modded bush is collected correctly, pays out the stack and quality
+its pack intended, and gets a row of its own named after what it gives once one has been seen growing
+in your save. Until then, **Everything else here** under Bushes collects it.
+
+That is the general rule: anything this mod cannot name in advance is still collectable through its
+group's **Everything else here** row, the day the mod adding it is installed.
 
 ### Panning spots
 

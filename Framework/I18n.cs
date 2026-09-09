@@ -15,7 +15,8 @@ internal static class I18n
         return I18n.Translations?.Get(key, tokens) ?? key;
     }
 
-    public static string Target_OtherForage() => I18n.Get("target.other-forage");
+    public static string Target_EverythingElse() => I18n.Get("target.everything-else");
+    public static string Target_EverythingElseTooltip() => I18n.Get("target.everything-else.tooltip");
     public static string Target_LargeStump() => I18n.Get("target.large-stump");
     public static string Target_LargeLog() => I18n.Get("target.large-log");
     public static string Target_Boulder() => I18n.Get("target.boulder");
@@ -50,6 +51,10 @@ internal static class I18n
     public static string Menu_SettingsTooltip() => I18n.Get("menu.settings-tooltip");
     public static string Menu_NothingSelected() => I18n.Get("menu.nothing-selected");
     public static string Menu_SelectedCount(int count) => I18n.Get("menu.selected-count", new { count });
+    public static string Menu_SelectedCountWithGroups(int count, int groups) => I18n.Get("menu.selected-count-groups", new { count, groups });
+    public static string Menu_SelectedGroups(int groups) => I18n.Get("menu.selected-groups", new { groups });
+    public static string Menu_Everything() => I18n.Get("menu.everything");
+    public static string Menu_AllBut(int count) => I18n.Get("menu.all-but", new { count });
 
     public static string Scope_Local() => I18n.Get("scope.local");
     public static string Scope_LocalDesc(string location) => I18n.Get("scope.local.desc", new { location });
