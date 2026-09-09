@@ -86,21 +86,6 @@ Two deliberate omissions:
   destructive in a way nothing else on the list is.
 - **Golden walnut bushes** aren't collectable.
 
-## Modded content
-
-Nothing extra to install, and nothing to configure. Rows are built from the game's own data at load
-time, so crops, fruit, forage, animals and machines added by a content pack are on the list the first
-time you open a grabber after installing it.
-
-Bushes are the exception, because the game has no data file for them: what a bush gives is decided in
-code, which is why mods that add bushes do it by changing what an existing bush answers. This mod asks
-the bush rather than assuming, so a modded bush is collected correctly, pays out the stack and quality
-its pack intended, and gets a row of its own named after what it gives once one has been seen growing
-in your save. Until then, **Everything else here** under Bushes collects it.
-
-That is the general rule: anything this mod cannot name in advance is still collectable through its
-group's **Everything else here** row, the day the mod adding it is installed.
-
 ### Panning spots
 
 **Panning Spot** sits in the **Digging** group, and covers the glittering spot that appears in a
@@ -164,6 +149,21 @@ Tree shaking runs the game's own shake, so it yields whatever shaking by hand wo
 occasional mystery box, and anything a content pack adds. Machines go through the game's own
 collection path, so crystalariums restart, tappers reload, and harvest stats and skill experience are
 credited as normal.
+
+## Modded content
+
+Nothing extra to install, and nothing to configure. Rows are built from the game's own data at load
+time, so crops, fruit, forage, animals and machines added by a content pack are on the list the first
+time you open a grabber after installing it.
+
+Bushes are the exception, because the game has no data file for them: what a bush gives is decided in
+code, which is why mods that add bushes do it by changing what an existing bush answers. This mod asks
+the bush rather than assuming, so a modded bush is collected correctly, pays out the stack and quality
+its pack intended, and gets a row of its own named after what it gives once one has been seen growing
+in your save. Until then, **Everything else here** under Bushes collects it.
+
+That is the general rule: anything this mod cannot name in advance is still collectable through its
+group's **Everything else here** row, the day the mod adding it is installed.
 
 ## Several grabbers
 
