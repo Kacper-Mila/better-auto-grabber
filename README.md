@@ -84,8 +84,8 @@ empty soil.
 ## What it can collect
 
 Forage, crops (including indoor pots), fruit trees, bushes (including ones in garden pots), large
-stumps and logs, boulders and meteorites, artifact and seed spots, panning spots, tree shaking, tree
-moss, trash cans, animal products, and machines.
+stumps and logs, boulders and meteorites, ore and gem nodes, rocks, twigs and weeds, artifact and seed
+spots, panning spots, tree shaking, tree moss, trash cans, animal products, and machines.
 
 The Forage group also lists the things the game drops on the ground from its own code rather than from
 `Data/Locations`: coral, sea urchins and seaweed on the beach, on Ginger Island's west shore and in the
@@ -102,6 +102,28 @@ Three deliberate omissions:
 - **Incubators** are never emptied. What one holds is the egg you gave it, and it reports itself ready
   on the morning the timer runs out, before you get to the coop and the chick hatches. Taking it would
   hand the egg back and cancel the hatch, so incubators are left off the list entirely.
+
+### Rocks & Litter
+
+Every node on the wiki's mining table has a row: copper, iron, gold, iridium and radioactive, the seven
+gem nodes, gem and mystic stones, all four geodes, cinder shard, fossil, clay, mussel, calico egg and
+coal. Plain stone, snowy stone, twigs and weeds are listed too, each on its own row, so clearing clutter
+and mining ore are separate decisions.
+
+Breaking a node runs the game's own `OnStoneDestroyed`, so the drop is whatever your own pickaxe would
+have got on that tile that day, down to the Prospector's extra coal and the Mystic Stone's prismatic
+shard. Mining experience and the rocks-crushed stat are credited as normal.
+
+The game's names are kept, which is why the fossil node the wiki calls a Bone Node is listed as **Fossil
+Stone**. The one exception is the coal node, which the game calls "Stone" like any grey rock; without a
+name of its own it would have been buried in the Stone row, so this mod names it.
+
+Rows follow vanilla's tool rules. Any pickaxe breaks any rock except an Emerald Stone, which needs steel
+or better, and an Aquamarine Stone, which needs copper or better; twigs need an axe; weeds need nothing
+worth checking. Turning off `RespectToolRequirements` lifts all of it.
+
+One thing to know before ticking these: the Quarry is part of the Mountain map, so a grabber that reaches
+the Mountain clears the quarry's nodes, iridium included, on every pass.
 
 ### Panning spots
 

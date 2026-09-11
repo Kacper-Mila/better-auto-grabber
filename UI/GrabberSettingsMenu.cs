@@ -799,6 +799,7 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
             TargetGroup.FruitTrees => I18n.Group_FruitTrees(),
             TargetGroup.Bushes => I18n.Group_Bushes(),
             TargetGroup.Clumps => I18n.Group_Clumps(),
+            TargetGroup.Litter => I18n.Group_Litter(),
             TargetGroup.Digging => I18n.Group_Digging(),
             TargetGroup.Trees => I18n.Group_Trees(),
             TargetGroup.TrashCans => I18n.Group_TrashCans(),

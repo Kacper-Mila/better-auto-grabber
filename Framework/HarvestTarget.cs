@@ -8,6 +8,7 @@ internal enum TargetGroup
     FruitTrees,
     Bushes,
     Clumps,
+    Litter,
     Digging,
     Trees,
     TrashCans,

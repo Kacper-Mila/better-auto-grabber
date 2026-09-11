@@ -11,6 +11,7 @@
     "target.panning-spot": "Panning Spot",
     "target.shake-trees": "Shake trees",
     "target.harvest-moss": "Harvest moss",
+    "target.coal-node": "Coal Node",
     "target.slime-ball": "Slime Ball",
     "target.trash-can": "Trash Can",
 
@@ -57,6 +58,7 @@
     "group.fruit-trees": "Fruit Trees",
     "group.bushes": "Bushes",
     "group.clumps": "Stumps & Boulders",
+    "group.litter": "Rocks & Litter",
     "group.digging": "Digging",
     "group.trees": "Trees",
     "group.trash-cans": "Trash Cans",

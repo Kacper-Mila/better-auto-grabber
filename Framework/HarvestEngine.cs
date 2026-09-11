@@ -78,6 +78,7 @@ internal sealed class HarvestEngine
                 this.SweepBushes(location, settings, output);
                 this.SweepFruitTrees(location, settings, output);
                 this.SweepResourceClumps(location, settings, output);
+                this.SweepLitter(location, settings, output);
                 this.SweepDigSpots(location, settings, output);
                 this.SweepPanningSpot(location, settings, output);
                 this.SweepTrees(location, settings, output);
@@ -655,6 +656,110 @@ internal sealed class HarvestEngine
                 yield return ItemRegistry.Create("(O)390", 10);
                 break;
         }
+    }
+
+    /*********
+    ** Litter
+    *********/
+    /// <summary>Break the rocks, twigs and weeds standing on a location's tiles.</summary>
+    /// <remarks>
+    ///   Stones go through <c>GameLocation.OnStoneDestroyed</c>, which is the whole of vanilla's own
+    ///   sequence: the ore, the extra coal a Prospector gets, what a geode node leaves behind, secret
+    ///   notes, the Mystic and Rocks Crushed stats, and the dwarf statue buffs. Every drop it makes is
+    ///   created against this location rather than the player's, so unlike a resource clump there's
+    ///   nothing to work around. It hands out its own mining experience inside the same call, which is
+    ///   why the whole thing sits inside <see cref="PreserveExperience" />.
+    ///
+    ///   Twigs and weeds don't have one call that does everything. A weed is cut with
+    ///   <c>Object.cutWeed</c>, which drops the fibre, the mixed seeds and the rest into this location's
+    ///   debris. A twig's single piece of wood is created here, because vanilla's twig branch lives
+    ///   inside <c>Object.performToolAction</c> and reaches through <c>Tool.getLastFarmerToUse</c>, which
+    ///   is null for a tool nobody is swinging.
+    /// </remarks>
+    private void SweepLitter(GameLocation location, GrabberSettings settings, GrabberOutput output)
+    {
+        foreach ((Vector2 tile, Object obj) in location.objects.Pairs.ToArray())
+        {
+            if (output.IsFull)
+                return;
+
+            string? targetId = TargetCatalog.LitterRowFor(obj.QualifiedItemId);
+            if (targetId == null || !settings.Wants(targetId))
+                continue;
+
+            if (!this.HasToolForLitter(obj))
+            {
+                output.Report.Skip($"{TargetCatalog.Get(targetId)?.DisplayName ?? targetId}: {HarvestEngine.DescribeLitterToolRequirement(obj)}");
+                continue;
+            }
+
+            if (obj.IsBreakableStone())
+            {
+                this.PreserveExperience(() =>
+                    this.CaptureDebris(location, output, tile, () => location.OnStoneDestroyed(obj.ItemId, (int)tile.X, (int)tile.Y, Game1.player))
+                );
+                Game1.stats.RocksCrushed++;
+            }
+            else if (obj.IsTwig())
+            {
+                output.Deposit(ItemRegistry.Create("(O)388"), location, tile);
+
+                if (this.Config.GrantExperience)
+                    Game1.player.gainExperience(2, 1);
+            }
+            else
+            {
+                this.CaptureDebris(location, output, tile, () => obj.cutWeed(Game1.player));
+            }
+
+            obj.performRemoveAction();
+            location.objects.Remove(tile);
+        }
+    }
+
+    /// <summary>Get whether the player owns the tool vanilla would break a piece of litter with.</summary>
+    /// <param name="obj">The rock, twig or weed.</param>
+    /// <remarks>
+    ///   Asked of the item rather than of its row, because a row stands for several item IDs and the two
+    ///   stones that need more than a starter pickaxe are single IDs within one.
+    ///
+    ///   Those two are vanilla's own rule, from <c>Object.performToolAction</c>: an emerald node takes no
+    ///   damage at all from a starter or copper pickaxe, and an aquamarine node none from a starter one.
+    ///   Every other rock yields to any pickaxe, and only takes more swings -- which is nothing a grabber
+    ///   can be short of. Weeds need no tool worth checking: they fall to anything heavy, and the scythe
+    ///   every farm starts with is enough.
+    /// </remarks>
+    private bool HasToolForLitter(Object obj)
+    {
+        if (!this.Config.RespectToolRequirements)
+            return true;
+
+        if (obj.IsTwig())
+            return this.Tools.GetLevel(ToolKind.Axe) >= 0;
+
+        if (!obj.IsBreakableStone())
+            return true;
+
+        return obj.QualifiedItemId switch
+        {
+            "(O)12" => this.Tools.GetLevel(ToolKind.Pickaxe) >= 2,
+            "(O)14" => this.Tools.GetLevel(ToolKind.Pickaxe) >= 1,
+            _ => this.Tools.GetLevel(ToolKind.Pickaxe) >= 0
+        };
+    }
+
+    /// <summary>Describe why a piece of litter was left standing, for the log.</summary>
+    private static string DescribeLitterToolRequirement(Object obj)
+    {
+        if (obj.IsTwig())
+            return "you don't own an axe";
+
+        return obj.QualifiedItemId switch
+        {
+            "(O)12" => "you don't own a steel pickaxe or better",
+            "(O)14" => "you don't own a copper pickaxe or better",
+            _ => "you don't own a pickaxe"
+        };
     }
 
     /*********

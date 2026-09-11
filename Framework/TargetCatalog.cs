@@ -7,6 +7,7 @@ using StardewValley.GameData.FarmAnimals;
 using StardewValley.GameData.FruitTrees;
 using StardewValley.GameData.Locations;
 using StardewValley.GameData.Machines;
+using StardewValley.GameData.Objects;
 using StardewValley.ItemTypeDefinitions;
 using StardewValley.TerrainFeatures;
 
@@ -37,6 +38,9 @@ internal static class TargetCatalog
     /// <summary>The wildcard row for the bush group.</summary>
     public const string OtherBushesId = "bush:*";
 
+    /// <summary>The wildcard row for the litter group.</summary>
+    public const string OtherLitterId = "litter:*";
+
     /// <summary>The wildcard row for the animal group.</summary>
     public const string OtherAnimalsId = "animal:*";
 
@@ -50,6 +54,7 @@ internal static class TargetCatalog
         TargetCatalog.OtherCropsId,
         TargetCatalog.OtherFruitId,
         TargetCatalog.OtherBushesId,
+        TargetCatalog.OtherLitterId,
         TargetCatalog.OtherAnimalsId,
         TargetCatalog.OtherMachinesId
     };
@@ -57,6 +62,7 @@ internal static class TargetCatalog
     private static readonly List<HarvestTarget> Targets = new();
     private static readonly Dictionary<string, HarvestTarget> ByIdLookup = new();
     private static readonly HashSet<string> AnimalProductIds = new();
+    private static readonly Dictionary<string, string> LitterRowByItem = new();
 
     /// <summary>Every row, in display order.</summary>
     public static IReadOnlyList<HarvestTarget> All => TargetCatalog.Targets;
@@ -100,6 +106,7 @@ internal static class TargetCatalog
             TargetGroup.Crops => TargetCatalog.OtherCropsId,
             TargetGroup.FruitTrees => TargetCatalog.OtherFruitId,
             TargetGroup.Bushes => TargetCatalog.OtherBushesId,
+            TargetGroup.Litter => TargetCatalog.OtherLitterId,
             TargetGroup.Animals => TargetCatalog.OtherAnimalsId,
             TargetGroup.Machines => TargetCatalog.OtherMachinesId,
             _ => null
@@ -141,6 +148,21 @@ internal static class TargetCatalog
 
     /// <summary>Build the target ID for a resource clump.</summary>
     public static string ClumpId(int parentSheetIndex) => "clump:" + parentSheetIndex;
+
+    /// <summary>Build the target ID for a piece of breakable litter.</summary>
+    public static string LitterId(string qualifiedItemId) => "litter:" + qualifiedItemId;
+
+    /// <summary>Get the row a piece of litter is ticked under, or <c>null</c> if it isn't a listed one.</summary>
+    /// <param name="qualifiedItemId">The rock, twig or weed standing on the tile.</param>
+    /// <remarks>
+    ///   Litter is the one group where a row doesn't answer for a single item ID. The game has eighteen
+    ///   separate stones all called "Stone" and six called "Snowy Stone", so rows are merged by the name
+    ///   they'd be listed under and this is what maps an item back to the row it ended up in.
+    /// </remarks>
+    public static string? LitterRowFor(string qualifiedItemId)
+    {
+        return TargetCatalog.LitterRowByItem.GetValueOrDefault(qualifiedItemId);
+    }
 
     /// <summary>The target ID for artifact spots.</summary>
     public const string ArtifactSpotId = "dig:artifact";
@@ -196,12 +218,14 @@ internal static class TargetCatalog
         TargetCatalog.Targets.Clear();
         TargetCatalog.ByIdLookup.Clear();
         TargetCatalog.AnimalProductIds.Clear();
+        TargetCatalog.LitterRowByItem.Clear();
 
         TargetCatalog.AddForage();
         TargetCatalog.AddCrops();
         TargetCatalog.AddFruitTrees();
         TargetCatalog.AddBushes(discoveredBushDrops ?? Enumerable.Empty<string>());
         TargetCatalog.AddClumps();
+        TargetCatalog.AddLitter();
         TargetCatalog.AddDigging();
         TargetCatalog.AddTrees();
         TargetCatalog.AddTrashCans();
@@ -329,6 +353,79 @@ internal static class TargetCatalog
         TargetCatalog.Add(TargetCatalog.ClumpId(ResourceClump.boulderIndex), I18n.Target_Boulder(), TargetGroup.Clumps, "(O)390");
         TargetCatalog.Add(TargetCatalog.ClumpId(ResourceClump.meteoriteIndex), I18n.Target_Meteorite(), TargetGroup.Clumps, "(O)386");
         TargetCatalog.Add(TargetCatalog.ClumpId(ResourceClump.mineRock1Index), I18n.Target_MineBoulder(), TargetGroup.Clumps, "(O)390");
+    }
+
+    /// <summary>The coal nodes, which the game gives no name of their own.</summary>
+    /// <remarks>
+    ///   Every other node is named for what's in it -- Copper Stone, Omni Geode Stone -- but the four
+    ///   coal nodes are called "Stone" in <c>Data/Objects</c> like the plain grey rocks, so merging rows
+    ///   by name would bury them in the Stone row with no way to ask for coal on its own. They're the
+    ///   one litter row this mod names itself.
+    /// </remarks>
+    private static readonly HashSet<string> CoalNodeIds = new()
+    {
+        "BasicCoalNode0",
+        "BasicCoalNode1",
+        "VolcanoCoalNode0",
+        "VolcanoCoalNode1"
+    };
+
+    /// <summary>Add a row for every rock, twig and weed that can be broken where it stands.</summary>
+    /// <remarks>
+    ///   Rows come from <c>Data/Objects</c>: litter is category -999, and the game tells the three kinds
+    ///   apart by name (<c>Object.IsBreakableStone</c>, <c>IsTwig</c>, <c>IsWeeds</c>), so a stone added by
+    ///   a content pack is listed the day it's installed.
+    ///
+    ///   Unlike every other group, several item IDs share one row. The game has eighteen stones named
+    ///   "Stone" and six named "Snowy Stone"; listing them separately would be eighteen identical rows
+    ///   that nobody could tell apart, so they're merged under the name they'd all carry anyway.
+    /// </remarks>
+    private static void AddLitter()
+    {
+        TargetCatalog.Add(TargetCatalog.OtherLitterId, I18n.Target_EverythingElse(), TargetGroup.Litter, null);
+
+        Dictionary<string, List<string>> byRowName = new();
+        foreach ((string id, ObjectData? data) in Game1.objectData)
+        {
+            if (data == null || data.Category != -999)
+                continue;
+
+            string name = data.Name ?? "";
+            bool isLitter = name == "Stone" || name == "Twig" || name.Contains("weeds", StringComparison.OrdinalIgnoreCase);
+            if (!isLitter)
+                continue;
+
+            string qualified = "(O)" + id;
+            string rowName = TargetCatalog.CoalNodeIds.Contains(id)
+                ? I18n.Target_CoalNode()
+                : TargetCatalog.NameOf(qualified);
+
+            if (!byRowName.TryGetValue(rowName, out List<string>? members))
+                byRowName[rowName] = members = new List<string>();
+            members.Add(qualified);
+        }
+
+        foreach ((string rowName, List<string> members) in byRowName.OrderBy(pair => pair.Key, StringComparer.CurrentCultureIgnoreCase))
+        {
+            // The row is filed under one of its members, and which one has to stay put: if a content
+            // pack's stone could take the ID, everyone's tick would quietly move to a different row the
+            // day they installed it. Vanilla's numeric IDs sort ahead of the string IDs mods use.
+            string owner = members.OrderBy(id => TargetCatalog.LitterSortKey(id)).ThenBy(id => id, StringComparer.Ordinal).First();
+
+            TargetCatalog.Add(TargetCatalog.LitterId(owner), rowName, TargetGroup.Litter, owner);
+
+            foreach (string member in members)
+                TargetCatalog.LitterRowByItem[member] = TargetCatalog.LitterId(owner);
+        }
+    }
+
+    /// <summary>Sort a litter item ID so that the game's own numeric IDs come before the string IDs content packs use.</summary>
+    private static (int Rank, int Number) LitterSortKey(string qualifiedItemId)
+    {
+        string id = qualifiedItemId.StartsWith("(O)", StringComparison.Ordinal) ? qualifiedItemId[3..] : qualifiedItemId;
+        return int.TryParse(id, out int number)
+            ? (0, number)
+            : (1, 0);
     }
 
     /// <summary>Add a row for each spot that has to be worked with a tool for whatever it's hiding.</summary>
