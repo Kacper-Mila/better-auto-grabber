@@ -1,7 +1,7 @@
 {
   "Name": "Better Auto-Grabber",
   "Author": "Milaz",
-  "Version": "1.2.2",
+  "Version": "1.3.0",
   "Description": "Per-grabber control over what each auto-grabber collects and where it reaches.",
   "UniqueID": "kacper.BetterAutoGrabber",
   "EntryDll": "BetterAutoGrabber.dll",
