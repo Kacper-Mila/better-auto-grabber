@@ -15,6 +15,23 @@ internal static class I18n
         return I18n.Translations?.Get(key, tokens) ?? key;
     }
 
+    /// <summary>Get the name this mod gives a location, or <c>null</c> if it doesn't name that one.</summary>
+    /// <param name="internalName">The location's internal name, like <c>BugLand</c>.</param>
+    /// <remarks>
+    ///   Unlike every other string here this one is looked up rather than named, because the set of
+    ///   locations worth naming is a list rather than a handful: a typed accessor each would be thirty
+    ///   near-identical lines, and a translator adding a name would then have to edit code as well.
+    ///   A missing key is an answer, not a failure, which is why this reads <see cref="Translation.HasValue" />
+    ///   instead of the string -- SMAPI hands back a "(missing translation)" placeholder otherwise.
+    /// </remarks>
+    public static string? Location(string internalName)
+    {
+        Translation? translation = I18n.Translations?.Get("location." + internalName);
+        return translation?.HasValue() == true
+            ? translation.ToString()
+            : null;
+    }
+
     public static string Target_EverythingElse() => I18n.Get("target.everything-else");
     public static string Target_EverythingElseTooltip() => I18n.Get("target.everything-else.tooltip");
     public static string Target_LargeStump() => I18n.Get("target.large-stump");

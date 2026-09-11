@@ -36,8 +36,15 @@ such row, because there is nothing for it to cover.
 | Everywhere I've been | Every location you've visited at least once |
 | Chosen locations | Only the ones you tick |
 
-Locations show their internal name beside their display name, because the farm, the farmhouse and
-the cellar all present as "*your farm* Farm" otherwise.
+Locations are listed under the names players actually use for them. The game names a location only
+where `Data/Locations` says so, and it says nothing for most of the map, so the list would otherwise
+read `BugLand`, `Club`, `SkullCave` and `IslandWest` instead of Mutant Bug Lair, Casino, Skull Cavern
+and Ginger Island West. Where the game does name a place, that name is kept, since it is the canonical
+one and is already translated. The internal name stays beside each row, because it is what tells the
+farm, the farmhouse and the cellar apart.
+
+Note the Quarry isn't on the list: it is part of the Mountain map rather than a location of its own, so
+a grabber that reaches the Mountain already reaches the quarry.
 
 **One row per kind of building, covering all of them.** There is a single **Coop** row, and ticking it
 reaches every coop you own — both of them if you have two, and whatever their tier, since a Coop, a Big

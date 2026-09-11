@@ -221,6 +221,17 @@ internal sealed class GrabberSettings
     }
 
     /// <summary>Get the name shown for a location's row on the scope tab.</summary>
+    /// <remarks>
+    ///   Three sources, in the order they're trusted. A building interior is named by its building data.
+    ///   Everything else is named by <c>Data/Locations</c> where that says anything, because the game's
+    ///   own name is the canonical one and is already translated. Where it says nothing -- which is most
+    ///   of the map, including the swamp, the bug lair, the casino and every part of Ginger Island -- the
+    ///   mod supplies the name the wiki and the community use, so the row reads "Mutant Bug Lair" rather
+    ///   than "BugLand".
+    ///
+    ///   Note this deliberately doesn't use <see cref="GameLocation.DisplayName" />, which falls back to
+    ///   the containing location: that's what made the cellar read as "&lt;your farm&gt; Farm".
+    /// </remarks>
     public static string SelectionName(GameLocation location)
     {
         // A building interior has no display name of its own, so GameLocation.DisplayName falls through
@@ -233,8 +244,36 @@ internal sealed class GrabberSettings
                 return name;
         }
 
-        return string.IsNullOrWhiteSpace(location.DisplayName) ? location.Name : location.DisplayName;
+        // GetDisplayName is the raw answer from Data/Locations, and is null for a location the asset
+        // doesn't name. That null is the gap the mod's own names fill.
+        string? fromGame = location.GetDisplayName();
+        if (!string.IsNullOrWhiteSpace(fromGame))
+            return fromGame;
+
+        return GrabberSettings.CommunityName(location.Name) ?? location.Name;
     }
+
+    /// <summary>Get the name this mod gives a map the game leaves unnamed, or <c>null</c> if it doesn't name that one.</summary>
+    /// <param name="name">The location's internal name.</param>
+    /// <remarks>
+    ///   Maps that come in numbered copies -- <c>Cellar2</c> for the second cabin's cellar,
+    ///   <c>VolcanoDungeon4</c> for the fourth floor down -- share the one entry their family is listed
+    ///   under, so the trailing digits are dropped when the full name isn't listed itself.
+    /// </remarks>
+    private static string? CommunityName(string name)
+    {
+        string? exact = I18n.Location(name);
+        if (exact != null)
+            return exact;
+
+        string family = name.TrimEnd(GrabberSettings.Digits);
+        return family.Length > 0 && family != name
+            ? I18n.Location(family)
+            : null;
+    }
+
+    /// <summary>The digits stripped off a numbered map's name to find the family it belongs to.</summary>
+    private static readonly char[] Digits = "0123456789".ToCharArray();
 
     /// <summary>Walk a building type back to the one it was first built as, so every tier shares a key.</summary>
     /// <remarks>
