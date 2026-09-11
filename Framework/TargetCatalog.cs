@@ -127,6 +127,12 @@ internal static class TargetCatalog
     /// <summary>Build the target ID for a harvested crop.</summary>
     public static string CropId(string qualifiedItemId) => "crop:" + qualifiedItemId;
 
+    /// <summary>The spring onion's qualified item ID.</summary>
+    public const string SpringOnionItemId = "(O)399";
+
+    /// <summary>Ginger's qualified item ID.</summary>
+    public const string GingerItemId = "(O)829";
+
     /// <summary>Build the target ID for a tree fruit.</summary>
     public static string FruitId(string qualifiedItemId) => "fruit:" + qualifiedItemId;
 
@@ -206,7 +212,25 @@ internal static class TargetCatalog
             TargetCatalog.ByIdLookup[target.Id] = target;
     }
 
-    /// <summary>Add a row for every item that <c>Data/Locations</c> can spawn as forage.</summary>
+    /// <summary>Forage the game drops on the ground from its own code, which no data asset lists.</summary>
+    /// <remarks>
+    ///   <c>Data/Locations</c> covers ten maps and misses the rest. Coral, sea urchins and seaweed are
+    ///   placed by <c>Beach.DayUpdate</c>, <c>IslandWest.DayUpdate</c> and the dangerous mines; magma caps
+    ///   and dragon teeth are placed as each volcano floor is generated. All of them are ordinary spawned
+    ///   objects once they land, so the forage pass has always collected them under the group's wildcard
+    ///   -- they just had no row to be ticked or refused on. Hardcoded because the game hardcodes them,
+    ///   the same reason the vanilla bush rows are.
+    /// </remarks>
+    private static readonly string[] CodeSpawnedForage =
+    {
+        "(O)393", // Coral
+        "(O)397", // Sea Urchin
+        "(O)152", // Seaweed
+        "(O)851", // Magma Cap
+        "(O)852"  // Dragon Tooth
+    };
+
+    /// <summary>Add a row for every item that can be found lying on the ground as forage.</summary>
     private static void AddForage()
     {
         HashSet<string> itemIds = new();
@@ -220,6 +244,9 @@ internal static class TargetCatalog
                 TargetCatalog.CollectItemIds(forage.ItemId, forage.RandomItemId, itemIds);
             }
         }
+
+        foreach (string id in TargetCatalog.CodeSpawnedForage)
+            TargetCatalog.CollectItemIds(id, null, itemIds);
 
         // Forage can also be placed by event scripts, content packs and weather, none of which is listed
         // in Data/Locations. This row answers for anything the loop below didn't name.
@@ -238,6 +265,13 @@ internal static class TargetCatalog
             if (data?.HarvestItemId != null)
                 TargetCatalog.CollectItemIds(data.HarvestItemId, null, itemIds);
         }
+
+        // Spring onions and ginger are crops with no entry in Data/Crops: the game grows them as forage
+        // crops and hardcodes what they give in Crop.harvest and Crop.hitWithHoe. They're listed here
+        // rather than under Forage because that's what they are in the world -- something growing in
+        // soil that the grabber harvests, not something lying on the ground.
+        TargetCatalog.CollectItemIds(TargetCatalog.SpringOnionItemId, null, itemIds);
+        TargetCatalog.CollectItemIds(TargetCatalog.GingerItemId, null, itemIds);
 
         TargetCatalog.Add(TargetCatalog.OtherCropsId, I18n.Target_EverythingElse(), TargetGroup.Crops, null);
 

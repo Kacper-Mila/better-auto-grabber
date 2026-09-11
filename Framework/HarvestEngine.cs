@@ -287,7 +287,18 @@ internal sealed class HarvestEngine
     /// <summary>Harvest one tile of soil if its crop is ready and wanted.</summary>
     private void TryHarvestCrop(GameLocation location, Vector2 tile, HoeDirt dirt, GrabberSettings settings, GrabberOutput output, Chest chest)
     {
-        if (output.IsFull || dirt.crop == null || !dirt.readyForHarvest())
+        if (output.IsFull || dirt.crop == null)
+            return;
+
+        // A ginger stalk is never "ready": HoeDirt.readyForHarvest answers false for it on purpose,
+        // because ginger is dug rather than picked. It needs the pass below instead of this one.
+        if (HarvestEngine.IsGinger(dirt.crop))
+        {
+            this.TryDigGinger(location, tile, dirt, settings, output);
+            return;
+        }
+
+        if (!dirt.readyForHarvest())
             return;
 
         string? harvestId = HarvestEngine.GetCropHarvestId(dirt.crop);
@@ -317,13 +328,59 @@ internal sealed class HarvestEngine
     /// <summary>Get the qualified item ID a crop yields, or <c>null</c> if it can't be worked out.</summary>
     private static string? GetCropHarvestId(Crop crop)
     {
-        // forage crops (spring onions) don't use indexOfHarvest
+        // Forage crops don't use indexOfHarvest: the game hardcodes what the two of them give, spring
+        // onions in Crop.harvest and ginger in Crop.hitWithHoe.
         if (crop.forageCrop.Value)
-            return crop.whichForageCrop.Value == "1" ? "(O)399" : null;
+        {
+            return crop.whichForageCrop.Value switch
+            {
+                "1" => TargetCatalog.SpringOnionItemId,
+                "2" => TargetCatalog.GingerItemId,
+                _ => null
+            };
+        }
 
         return string.IsNullOrWhiteSpace(crop.indexOfHarvest.Value)
             ? null
             : ItemRegistry.QualifyItemId(crop.indexOfHarvest.Value);
+    }
+
+    /// <summary>Get whether a crop is a ginger stalk, which is dug up rather than harvested.</summary>
+    private static bool IsGinger(Crop crop)
+    {
+        return crop.forageCrop.Value && crop.whichForageCrop.Value == "2";
+    }
+
+    /// <summary>Dig up a ginger stalk.</summary>
+    /// <remarks>
+    ///   This does what <c>HoeDirt.performToolAction</c> does with a hoe rather than calling
+    ///   <c>Crop.hitWithHoe</c>, because that method hands the ginger to <c>Game1.createItemDebris</c>
+    ///   without saying which location it belongs to -- so the drop lands in <c>Game1.currentLocation</c>,
+    ///   and a grabber digging on the island would teleport the ginger to wherever the player is standing.
+    ///   It's the same vanilla bug that stops <c>ResourceClump.destroy</c> being called directly.
+    ///
+    ///   Everything else vanilla does is kept: one ginger, the soil left in the state the weather implies,
+    ///   the stalk cleared, and the 7 foraging experience the dig is worth. A hoe is needed, on the same
+    ///   terms as an artifact spot.
+    /// </remarks>
+    private void TryDigGinger(GameLocation location, Vector2 tile, HoeDirt dirt, GrabberSettings settings, GrabberOutput output)
+    {
+        string targetId = TargetCatalog.CropId(TargetCatalog.GingerItemId);
+        if (!settings.Wants(targetId))
+            return;
+
+        if (!this.HasToolFor(targetId))
+        {
+            output.Report.Skip($"{TargetCatalog.Get(targetId)?.DisplayName ?? targetId}: {this.DescribeToolRequirement(targetId)}");
+            return;
+        }
+
+        dirt.state.Value = location.IsRainingHere() ? HoeDirt.watered : HoeDirt.dry;
+        output.Deposit(ItemRegistry.Create(TargetCatalog.GingerItemId), location, tile);
+        dirt.destroyCrop(showAnimation: false);
+
+        if (this.Config.GrantExperience)
+            Game1.player.gainExperience(2, 7);
     }
 
     /// <summary>Replant the soil a crop was just harvested from, using a seed the grabber is holding.</summary>
@@ -1098,6 +1155,7 @@ internal sealed class HarvestEngine
         return targetId switch
         {
             TargetCatalog.ArtifactSpotId or TargetCatalog.SeedSpotId => this.Tools.GetLevel(ToolKind.Hoe) >= 0,
+            _ when targetId == TargetCatalog.CropId(TargetCatalog.GingerItemId) => this.Tools.GetLevel(ToolKind.Hoe) >= 0,
             TargetCatalog.PanningSpotId => this.Tools.GetLevel(ToolKind.Pan) >= 0,
             _ when targetId == TargetCatalog.ClumpId(ResourceClump.stumpIndex) => this.Tools.GetLevel(ToolKind.Axe) >= 1,
             _ when targetId == TargetCatalog.ClumpId(ResourceClump.hollowLogIndex) => this.Tools.GetLevel(ToolKind.Axe) >= 2,
@@ -1111,7 +1169,7 @@ internal sealed class HarvestEngine
     /// <summary>Describe why a tool requirement wasn't met, for the log.</summary>
     private string DescribeToolRequirement(string targetId)
     {
-        if (targetId == TargetCatalog.ArtifactSpotId || targetId == TargetCatalog.SeedSpotId)
+        if (targetId == TargetCatalog.ArtifactSpotId || targetId == TargetCatalog.SeedSpotId || targetId == TargetCatalog.CropId(TargetCatalog.GingerItemId))
             return "you don't own a hoe";
 
         if (targetId == TargetCatalog.PanningSpotId)

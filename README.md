@@ -87,6 +87,13 @@ Forage, crops (including indoor pots), fruit trees, bushes (including ones in ga
 stumps and logs, boulders and meteorites, artifact and seed spots, panning spots, tree shaking, tree
 moss, trash cans, animal products, and machines.
 
+The Forage group also lists the things the game drops on the ground from its own code rather than from
+`Data/Locations`: coral, sea urchins and seaweed on the beach, on Ginger Island's west shore and in the
+dangerous mines, and magma caps and dragon teeth on the volcano floors. Spring onions and ginger are
+listed under Crops, since they grow in soil rather than lying on the ground. Ginger is dug rather than
+picked, so it needs a hoe on the same terms as an artifact spot, and the stalk is cleared the way your
+own hoe would clear it.
+
 Three deliberate omissions:
 
 - **Giant crops** are never harvested. Plenty of people grow them as decoration, and felling one is
