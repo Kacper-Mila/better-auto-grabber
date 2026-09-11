@@ -77,8 +77,8 @@ empty soil.
 ## What it can collect
 
 Forage, crops (including indoor pots), fruit trees, bushes (including ones in garden pots), large
-stumps and logs, boulders and meteorites, artifact and seed spots, panning spots, tree shaking, trash
-cans, animal products, and machines.
+stumps and logs, boulders and meteorites, artifact and seed spots, panning spots, tree shaking, tree
+moss, trash cans, animal products, and machines.
 
 Three deliberate omissions:
 
@@ -152,6 +152,11 @@ Tree shaking runs the game's own shake, so it yields whatever shaking by hand wo
 occasional mystery box, and anything a content pack adds. Machines go through the game's own
 collection path, so crystalariums restart, tappers reload, and harvest stats and skill experience are
 credited as normal.
+
+**Harvest moss** is a separate row in the **Trees** group, and it carries the same price cutting moss
+by hand does: the tree drops back several growth stages, and moss only returns once it has grown all
+the way back. Leave the row unticked if you would rather keep your trees where they are. No scythe
+needed, since every farm has one and no upgrade to it changes what the cut gives.
 
 ## Modded content
 

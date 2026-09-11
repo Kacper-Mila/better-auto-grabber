@@ -81,6 +81,7 @@ internal sealed class HarvestEngine
                 this.SweepDigSpots(location, settings, output);
                 this.SweepPanningSpot(location, settings, output);
                 this.SweepTrees(location, settings, output);
+                this.SweepMoss(location, settings, output);
                 this.SweepTrashCans(location, settings, output);
                 this.SweepMachines(location, settings, output);
             }
@@ -743,6 +744,47 @@ internal sealed class HarvestEngine
                 continue;
 
             this.CaptureDebris(location, output, tile, () => tree.shake(tile, doEvenIfStillShaking: false));
+        }
+    }
+
+    /// <summary>Cut the moss off wild trees that have grown some.</summary>
+    /// <remarks>
+    ///   This does what <c>Tree.performToolAction</c>'s moss branch does rather than calling it, because
+    ///   that method is the whole of a tool hit: run it with a scythe and the tree is also shaken, which
+    ///   knocks its seed loose. The seed belongs to the Shake trees row, which the player may deliberately
+    ///   have left unticked, so this pass takes the moss and nothing else.
+    ///
+    ///   The rest of vanilla's sequence is kept, including the part that costs something: cutting moss
+    ///   sets the tree back to growth stage 10 or 11, and moss only regrows at 14. The moss item is rolled
+    ///   before the stat is incremented because <c>Tree.CreateMossItem</c> seeds its stack from that stat.
+    ///
+    ///   No tool gate. Every farmer starts with a scythe and no scythe upgrade changes what the cut gives,
+    ///   so there would be nothing for <see cref="ToolOwnership" /> to check.
+    /// </remarks>
+    private void SweepMoss(GameLocation location, GrabberSettings settings, GrabberOutput output)
+    {
+        if (!settings.Wants(TargetCatalog.MossId))
+            return;
+
+        foreach ((Vector2 tile, TerrainFeature feature) in location.terrainFeatures.Pairs.ToArray())
+        {
+            if (output.IsFull)
+                return;
+
+            // the same two conditions vanilla checks before it hands the moss over
+            if (feature is not Tree tree || !tree.hasMoss.Value || tree.growthStage.Value < Tree.treeStage)
+                continue;
+
+            Item moss = Tree.CreateMossItem();
+            Game1.stats.Increment("mossHarvested");
+
+            tree.hasMoss.Value = false;
+            tree.growthStage.Value = 12 - moss.Stack;
+
+            if (this.Config.GrantExperience)
+                Game1.player.gainExperience(2, moss.Stack);
+
+            output.Deposit(moss, location, tile);
         }
     }
 

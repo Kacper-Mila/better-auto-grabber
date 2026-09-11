@@ -148,6 +148,9 @@ internal static class TargetCatalog
     /// <summary>The target ID for shaking wild trees.</summary>
     public const string ShakeTreesId = "tree:shake";
 
+    /// <summary>The target ID for cutting the moss off wild trees.</summary>
+    public const string MossId = "tree:moss";
+
     /// <summary>The target ID for rummaging in trash cans.</summary>
     public const string TrashCanId = "trash:can";
 
@@ -307,15 +310,18 @@ internal static class TargetCatalog
         TargetCatalog.Add(TargetCatalog.PanningSpotId, I18n.Target_PanningSpot(), TargetGroup.Digging, "(T)Pan");
     }
 
-    /// <summary>Add the row for shaking wild trees.</summary>
+    /// <summary>Add the rows for the things a wild tree can be worked for without felling it.</summary>
     /// <remarks>
-    ///   One row rather than one per species: shaking is a single action with an unpredictable yield —
-    ///   seeds, the occasional mystery box, whatever a content pack has added — so there's nothing
-    ///   meaningful to pick between.
+    ///   One shake row rather than one per species: shaking is a single action with an unpredictable
+    ///   yield — seeds, the occasional mystery box, whatever a content pack has added — so there's
+    ///   nothing meaningful to pick between. Moss is its own row because it's a separate action with a
+    ///   price attached: cutting it sets the tree back several growth stages, which the player should
+    ///   get to decide about apart from shaking.
     /// </remarks>
     private static void AddTrees()
     {
         TargetCatalog.Add(TargetCatalog.ShakeTreesId, I18n.Target_ShakeTrees(), TargetGroup.Trees, "(O)309");
+        TargetCatalog.Add(TargetCatalog.MossId, I18n.Target_HarvestMoss(), TargetGroup.Trees, "(O)Moss");
     }
 
     /// <summary>Add the row for rummaging in trash cans.</summary>
