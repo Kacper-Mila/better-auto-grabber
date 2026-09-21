@@ -3,22 +3,6 @@ using Microsoft.Xna.Framework;
 
 namespace BetterAutoGrabber.UI;
 
-/// <summary>How a row's checkbox is drawn, which is what its three-way answer looks like on screen.</summary>
-internal enum RowCheck
-{
-    /// <summary>Not collected, and nothing is speaking for it.</summary>
-    Off,
-
-    /// <summary>Ticked by hand.</summary>
-    On,
-
-    /// <summary>Not ticked, but collected anyway because the group's wildcard row answers for it.</summary>
-    Inherited,
-
-    /// <summary>Crossed out by hand, so the group's wildcard row doesn't reach it.</summary>
-    Denied
-}
-
 /// <summary>One line in a scrolling checkbox list.</summary>
 internal sealed class ListRow
 {
@@ -37,9 +21,6 @@ internal sealed class ListRow
 
     /// <summary>Whether the row's checkbox is ticked.</summary>
     public Func<bool> IsChecked { get; init; } = () => false;
-
-    /// <summary>How the row's checkbox should be drawn, for the target rows that have more than two answers.</summary>
-    public Func<RowCheck>? Check { get; init; }
 
     /// <summary>Toggle the row.</summary>
     public Action Toggle { get; init; } = () => { };

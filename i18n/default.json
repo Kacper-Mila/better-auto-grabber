@@ -1,6 +1,6 @@
 {
     "target.everything-else": "Everything else here",
-    "target.everything-else.tooltip": "Collects everything in this group you haven't decided about yourself, including anything added by other mods later.\n\nRows it covers show a faded tick. Click one to not collect this item; click again to hand it back to this row.",
+    "target.everything-else.tooltip": "Collects the part of this group the list can't show: things the game spawns from its own code, and anything another mod adds that has no row of its own.\n\nIt never speaks for the rows below it. Those are collected only when you tick them.",
     "target.large-stump": "Large Stump",
     "target.large-log": "Large Log",
     "target.boulder": "Boulder",
@@ -79,9 +79,8 @@
     "menu.nothing-selected": "Nothing selected - this grabber behaves exactly like a stock one.",
     "menu.selected-count": "{{count}} selected",
     "menu.selected-count-groups": "{{count}} selected, and everything else in {{groups}} group(s)",
-    "menu.selected-groups": "everything in {{groups}} group(s)",
+    "menu.selected-groups": "everything else in {{groups}} group(s)",
     "menu.everything": "everything",
-    "menu.all-but": "all but {{count}}",
 
     "scope.local": "This location only",
     "scope.local.desc": "{{location}}",

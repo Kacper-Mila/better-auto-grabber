@@ -18,15 +18,18 @@ log is listed as the log, because "hardwood" doesn't say where it should come fr
 listed by machine. Nothing is ticked by default. Searching matches row names and group names, so
 typing "animal" lists the whole Animals group rather than nothing.
 
-**Everything else here** is the first row of most groups, and it answers for every row you haven't
-answered yourself. Tick it under Bushes and the grabber takes whatever any bush gives it, named on the
-list or not, including bushes a mod adds later. Rows it speaks for show a faded tick; click one to
-cross it out and that single thing is left alone. So "every crop except sweet gem berries" is two
-clicks, and it goes on meaning that as your mod list grows.
+**Everything else here** is the first row of most groups, and it stands for the part of that group the
+list can't show you: forage the game drops from its own code, a crop whose harvest is decided as it is
+picked, a machine another mod adds that the game's own data never names. It is a row like any other and
+it speaks only for itself. Ticking it does not tick anything below it, and the rows below it are
+collected only when you tick them, so what you see ticked is exactly what the grabber takes.
 
-Turning the group row off again leaves your individual ticks exactly as they were, so it is safe to
-try. Groups whose rows are fixed and few - stumps and boulders, digging, trees, trash cans - have no
-such row, because there is nothing for it to cover.
+**Check all** on a group's heading ticks the rows you can see and leaves **Everything else here**
+alone, so "every crop in the game right now, but not whatever a mod adds next month" is a single click.
+Neither one moves the other, in either direction. Searching narrows what check all
+acts on, so it ticks what is in front of you rather than the whole group. Groups whose rows are fixed
+and few - stumps and boulders, digging, trees, trash cans - have no "everything else" row at all,
+because nothing can turn up in them that the list wouldn't already show.
 
 **Where from** sets the grabber's reach:
 
@@ -233,10 +236,12 @@ Bushes are the exception, because the game has no data file for them: what a bus
 code, which is why mods that add bushes do it by changing what an existing bush answers. This mod asks
 the bush rather than assuming, so a modded bush is collected correctly, pays out the stack and quality
 its pack intended, and gets a row of its own named after what it gives once one has been seen growing
-in your save. Until then, **Everything else here** under Bushes collects it.
+in your save, from the next morning. Until a row exists, **Everything else here** under Bushes is what
+collects it.
 
-That is the general rule: anything this mod cannot name in advance is still collectable through its
-group's **Everything else here** row, the day the mod adding it is installed.
+That is the general rule: anything this mod cannot name is collectable through its group's **Everything
+else here** row the day the mod adding it is installed. Anything it can name gets a row instead, and a
+row is yours to tick - including one that appears later, which starts out unticked like every other.
 
 ## Several grabbers
 

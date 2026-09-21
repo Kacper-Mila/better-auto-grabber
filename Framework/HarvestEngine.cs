@@ -686,7 +686,12 @@ internal sealed class HarvestEngine
             if (output.IsFull)
                 return;
 
-            string? targetId = TargetCatalog.LitterRowFor(obj.QualifiedItemId);
+            // A stone the catalog couldn't name still belongs to the group: rows are built by matching
+            // names in Data/Objects, so a content pack's node called anything else has no row of its
+            // own and the group's wildcard is what answers for it.
+            string? targetId = TargetCatalog.LitterRowFor(obj.QualifiedItemId)
+                ?? (HarvestEngine.IsLitter(obj) ? TargetCatalog.OtherLitterId : null);
+
             if (targetId == null || !settings.Wants(targetId))
                 continue;
 
@@ -718,6 +723,13 @@ internal sealed class HarvestEngine
             obj.performRemoveAction();
             location.objects.Remove(tile);
         }
+    }
+
+    /// <summary>Get whether an object is a rock, twig or weed standing on a tile.</summary>
+    /// <remarks>The game's own three questions, which is how <c>Data/Objects</c> is read into rows.</remarks>
+    private static bool IsLitter(Object obj)
+    {
+        return obj.IsBreakableStone() || obj.IsTwig() || obj.IsWeeds();
     }
 
     /// <summary>Get whether the player owns the tool vanilla would break a piece of litter with.</summary>

@@ -379,9 +379,6 @@ internal sealed class ModEntry : Mod
             ? "nothing (animal products only)"
             : string.Join(", ", settings.TargetIds.Select(ModEntry.DescribeTarget).OrderBy(name => name));
 
-        if (settings.DeniedIds.Count > 0)
-            targets += $" | except {string.Join(", ", settings.DeniedIds.Select(ModEntry.DescribeTarget).OrderBy(name => name))}";
-
         string reach = locations != null
             ? string.Join(", ", locations.Select(location => location.NameOrUniqueName))
             : string.Join(", ", settings.ResolveLocations(grabber, new ModConfig()).Select(location => location.NameOrUniqueName));

@@ -80,12 +80,13 @@ internal static class TargetCatalog
         return TargetCatalog.ByIdLookup.TryGetValue(id, out HarvestTarget? target) ? target : null;
     }
 
-    /// <summary>Get the wildcard row that answers for a target when the grabber hasn't been asked about it, if its group has one.</summary>
+    /// <summary>Get the wildcard row that answers for a target with no row of its own, if its group has one.</summary>
     /// <param name="targetId">The row's saved ID.</param>
     /// <remarks>
-    ///   Groups whose rows are fixed and few -- stumps, dig spots, trees, trash cans -- have no wildcard:
-    ///   there's nothing a mod can add to them that the list wouldn't already show, so "everything else"
-    ///   would mean nothing.
+    ///   Only ever asked about something the list doesn't name: a row on the list speaks for itself, and
+    ///   the wildcard is there for what the list couldn't be built to show. Groups whose rows are fixed
+    ///   and few -- stumps, dig spots, trees, trash cans -- have no wildcard, because there's nothing a
+    ///   mod can add to them that the list wouldn't already show.
     /// </remarks>
     public static string? WildcardFor(string targetId)
     {
@@ -102,24 +103,6 @@ internal static class TargetCatalog
     /// <summary>Get whether a row is a group's wildcard rather than a thing in its own right.</summary>
     /// <param name="targetId">The row's saved ID.</param>
     public static bool IsWildcard(string targetId) => TargetCatalog.Wildcards.Contains(targetId);
-
-    /// <summary>Get the wildcard row for a group, or <c>null</c> if it doesn't have one.</summary>
-    /// <param name="group">The group.</param>
-    public static string? WildcardForGroup(TargetGroup group)
-    {
-        return group switch
-        {
-            TargetGroup.Forage => TargetCatalog.OtherForageId,
-            TargetGroup.Crops => TargetCatalog.OtherCropsId,
-            TargetGroup.FruitTrees => TargetCatalog.OtherFruitId,
-            TargetGroup.Bushes => TargetCatalog.OtherBushesId,
-            TargetGroup.Litter => TargetCatalog.OtherLitterId,
-            TargetGroup.Animals => TargetCatalog.OtherAnimalsId,
-            TargetGroup.Machines => TargetCatalog.OtherMachinesId,
-            TargetGroup.Buildings => TargetCatalog.OtherBuildingsId,
-            _ => null
-        };
-    }
 
     /// <summary>Add a row for a bush yield the world turned out to hold, if it isn't listed already.</summary>
     /// <param name="qualifiedItemId">The item the bush gives when shaken.</param>
