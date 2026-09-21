@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using StardewValley;
+using StardewValley.GameData;
+using StardewValley.GameData.Buildings;
 using StardewValley.GameData.Crops;
 using StardewValley.GameData.FarmAnimals;
 using StardewValley.GameData.FruitTrees;
@@ -10,6 +12,7 @@ using StardewValley.GameData.Machines;
 using StardewValley.GameData.Objects;
 using StardewValley.ItemTypeDefinitions;
 using StardewValley.TerrainFeatures;
+using StardewValley.TokenizableStrings;
 
 namespace BetterAutoGrabber.Framework;
 
@@ -47,6 +50,9 @@ internal static class TargetCatalog
     /// <summary>The wildcard row for the machine group.</summary>
     public const string OtherMachinesId = "machine:*";
 
+    /// <summary>The wildcard row for the building group.</summary>
+    public const string OtherBuildingsId = "building:*";
+
     /// <summary>Every wildcard row's ID, which is what makes one recognisable as a wildcard.</summary>
     private static readonly HashSet<string> Wildcards = new()
     {
@@ -56,7 +62,8 @@ internal static class TargetCatalog
         TargetCatalog.OtherBushesId,
         TargetCatalog.OtherLitterId,
         TargetCatalog.OtherAnimalsId,
-        TargetCatalog.OtherMachinesId
+        TargetCatalog.OtherMachinesId,
+        TargetCatalog.OtherBuildingsId
     };
 
     private static readonly List<HarvestTarget> Targets = new();
@@ -109,6 +116,7 @@ internal static class TargetCatalog
             TargetGroup.Litter => TargetCatalog.OtherLitterId,
             TargetGroup.Animals => TargetCatalog.OtherAnimalsId,
             TargetGroup.Machines => TargetCatalog.OtherMachinesId,
+            TargetGroup.Buildings => TargetCatalog.OtherBuildingsId,
             _ => null
         };
     }
@@ -211,6 +219,34 @@ internal static class TargetCatalog
     /// <summary>The auto-grabber's own qualified item ID.</summary>
     public const string AutoGrabberItemId = "(BC)165";
 
+    /// <summary>Build the target ID for a building the grabber takes finished goods out of.</summary>
+    /// <param name="buildingType">The building's key in <c>Data/Buildings</c>.</param>
+    /// <remarks>Keyed by building type rather than by item: the row is the building, as a machine row is the machine.</remarks>
+    public static string BuildingId(string buildingType) => "building:" + buildingType;
+
+    /// <summary>The target ID for the produce waiting in a fish pond.</summary>
+    /// <remarks>
+    ///   Not <see cref="BuildingId" /> of the pond's own type, because what a pond holds isn't a chest:
+    ///   it's a single item in a field of its own, collected on its own terms. The row is listed and
+    ///   ticked like the rest of the group, but the pass that empties it is separate.
+    /// </remarks>
+    public const string FishPondId = "building:pond";
+
+    /// <summary>The fish pond's key in <c>Data/Buildings</c>.</summary>
+    public const string FishPondBuildingType = "Fish Pond";
+
+    /// <summary>The junimo hut's key in <c>Data/Buildings</c>.</summary>
+    /// <remarks>
+    ///   Left off the list on purpose. Its chest is the junimos' own drop-off and people keep things in
+    ///   it, which makes it storage rather than an output hopper -- a grabber emptying it would be taking
+    ///   from a chest the player fills, not collecting finished goods.
+    /// </remarks>
+    private const string JunimoHutBuildingType = "Junimo Hut";
+
+    /// <summary>Roe's qualified item ID, drawn beside the fish pond row.</summary>
+    /// <remarks>A building has no sprite the list can draw, and roe is what most ponds hand you.</remarks>
+    private const string RoeItemId = "(O)812";
+
     /// <summary>Rebuild the catalog from the currently loaded game data.</summary>
     /// <param name="discoveredBushDrops">The bush yields earlier days of this save have seen, which no data asset lists.</param>
     public static void Rebuild(IEnumerable<string>? discoveredBushDrops = null)
@@ -231,6 +267,7 @@ internal static class TargetCatalog
         TargetCatalog.AddTrashCans();
         TargetCatalog.AddAnimals();
         TargetCatalog.AddMachines();
+        TargetCatalog.AddBuildings();
 
         foreach (HarvestTarget target in TargetCatalog.Targets)
             TargetCatalog.ByIdLookup[target.Id] = target;
@@ -522,6 +559,117 @@ internal static class TargetCatalog
 
             TargetCatalog.Add(TargetCatalog.MachineId(id), TargetCatalog.NameOf(id), TargetGroup.Machines, id);
         }
+    }
+
+    /// <summary>Add a row for every building a grabber can take finished goods out of.</summary>
+    /// <remarks>
+    ///   A building isn't an object on the map, so none of the other passes has ever seen one. What makes
+    ///   one collectable is holding finished goods somewhere the player is meant to come and take them
+    ///   from, which is the mill's flour hopper and whatever a content pack sets up the same way; see
+    ///   <see cref="CollectChests" /> for what counts. The fish pond joins them with produce held in a
+    ///   field of its own rather than in a chest.
+    /// </remarks>
+    private static void AddBuildings()
+    {
+        TargetCatalog.Add(TargetCatalog.OtherBuildingsId, I18n.Target_EverythingElse(), TargetGroup.Buildings, null);
+
+        List<(string Id, string Name, string? IconItemId)> rows = new()
+        {
+            (TargetCatalog.FishPondId, TargetCatalog.BuildingName(TargetCatalog.FishPondBuildingType, I18n.Target_FishPond()), TargetCatalog.RoeItemId)
+        };
+
+        foreach ((string type, BuildingData? data) in Game1.buildingData ?? new Dictionary<string, BuildingData>())
+        {
+            if (data == null || !TargetCatalog.IsCollectable(type, data))
+                continue;
+
+            rows.Add((TargetCatalog.BuildingId(type), TargetCatalog.BuildingName(type, type), TargetCatalog.BuildingIcon(data)));
+        }
+
+        foreach ((string id, string name, string? iconItemId) in rows.OrderBy(row => row.Name, StringComparer.CurrentCultureIgnoreCase))
+            TargetCatalog.Add(id, name, TargetGroup.Buildings, iconItemId);
+    }
+
+    /// <summary>Get whether a grabber may empty a building's output chests.</summary>
+    /// <param name="type">The building's key in <c>Data/Buildings</c>.</param>
+    /// <param name="data">The building's data.</param>
+    /// <remarks>
+    ///   The engine asks this too, so that what the list offers and what a pass takes can't drift apart.
+    /// </remarks>
+    public static bool IsCollectable(string type, BuildingData data)
+    {
+        return type != TargetCatalog.JunimoHutBuildingType && TargetCatalog.CollectChests(data).Any();
+    }
+
+    /// <summary>Get a building's chests that hold finished goods for the player to pick up.</summary>
+    /// <param name="data">The building's data.</param>
+    /// <remarks>
+    ///   Two ways of saying the same thing, because a content pack may only say it one way.
+    ///   <see cref="BuildingChestType.Collect" /> is the game declaring a chest to be an output hopper;
+    ///   being a conversion's <c>DestinationChest</c> is the data showing it to be one. The mill's Output
+    ///   is both.
+    ///
+    ///   What's excluded matters as much. A <see cref="BuildingChestType.Load" /> chest and any chest a
+    ///   conversion takes from hold what the <em>player</em> put there for the building to work on, and a
+    ///   grabber taking wheat back out of a mill would be a bug with a loop in it.
+    /// </remarks>
+    public static IEnumerable<BuildingChest> CollectChests(BuildingData data)
+    {
+        List<BuildingItemConversion> conversions = data.ItemConversions ?? new List<BuildingItemConversion>();
+        HashSet<string> sources = new(conversions.Select(conversion => conversion.SourceChest).Where(id => id != null)!);
+        HashSet<string> destinations = new(conversions.Select(conversion => conversion.DestinationChest).Where(id => id != null)!);
+
+        return (data.Chests ?? new List<BuildingChest>())
+            .Where(chest =>
+                (chest.Type == BuildingChestType.Collect || destinations.Contains(chest.Id))
+                && chest.Type != BuildingChestType.Load
+                && !sources.Contains(chest.Id)
+            );
+    }
+
+    /// <summary>Get a building's name as the game writes it, falling back to the given name.</summary>
+    /// <param name="type">The building's key in <c>Data/Buildings</c>.</param>
+    /// <param name="fallback">The name to use when the data doesn't give one.</param>
+    /// <remarks>
+    ///   <c>BuildingData.Name</c> is a tokenised string the game already translates, so a row reads the
+    ///   same as the sign on Robin's counter in every language.
+    /// </remarks>
+    private static string BuildingName(string type, string fallback)
+    {
+        if (Game1.buildingData != null && Game1.buildingData.TryGetValue(type, out BuildingData? data))
+        {
+            string? name = TokenParser.ParseText(data.Name);
+            if (!string.IsNullOrWhiteSpace(name))
+                return name;
+        }
+
+        return fallback;
+    }
+
+    /// <summary>Get the sprite to draw beside a building's row, or <c>null</c> if its data names nothing to draw.</summary>
+    /// <remarks>
+    ///   A building has no item to borrow a sprite from, so the row is drawn with what the building makes:
+    ///   the first item any of its conversions puts in a collect chest, which is flour for the mill.
+    /// </remarks>
+    private static string? BuildingIcon(BuildingData data)
+    {
+        HashSet<string> collectChests = new(TargetCatalog.CollectChests(data).Select(chest => chest.Id));
+
+        foreach (BuildingItemConversion conversion in data.ItemConversions ?? new List<BuildingItemConversion>())
+        {
+            if (!collectChests.Contains(conversion.DestinationChest))
+                continue;
+
+            foreach (GenericSpawnItemDataWithCondition produced in conversion.ProducedItems ?? new List<GenericSpawnItemDataWithCondition>())
+            {
+                HashSet<string> itemIds = new();
+                TargetCatalog.CollectItemIds(produced?.ItemId, produced?.RandomItemId, itemIds);
+                if (itemIds.Count > 0)
+                    return itemIds.First();
+            }
+        }
+
+        return null;
     }
 
     /// <summary>Add the qualified form of any of the given IDs which resolve to a real item.</summary>

@@ -85,7 +85,8 @@ empty soil.
 
 Forage, crops (including indoor pots), fruit trees, bushes (including ones in garden pots), large
 stumps and logs, boulders and meteorites, ore and gem nodes, rocks, twigs and weeds, artifact and seed
-spots, panning spots, tree shaking, tree moss, trash cans, animal products, and machines.
+spots, panning spots, tree shaking, tree moss, trash cans, animal products, machines, and buildings
+that hold finished goods.
 
 The Forage group also lists the things the game drops on the ground from its own code rather than from
 `Data/Locations`: coral, sea urchins and seaweed on the beach, on Ginger Island's west shore and in the
@@ -155,6 +156,34 @@ what would have come out is what lands in the grabber.
 Nobody gets upset about it, either. Searching a can by hand costs you 25 friendship with whoever is
 standing nearby and gets announced in chat; a grabber doesn't make the walk and isn't seen doing it,
 the same reasoning that keeps milking from earning friendship.
+
+### Buildings
+
+The **Buildings** group covers the things that hold finished goods for you but aren't objects on the
+map. Nothing in this group could be collected before, whatever the grabber was set up to do: a
+building isn't an object standing on a tile, so no pass ever saw one.
+
+**Fish Pond** takes whatever is waiting in the pond's bucket: roe, and the ink, algae and fish some
+ponds give instead. Fishing experience is credited exactly as collecting by hand credits it, scaled by
+what the produce is worth. It never feeds a pond - one asking for an item to raise its population goes
+on asking, since handing over five cinder shards is your call to make, not a grabber's.
+
+**Mill** empties the flour hopper. Nothing else about the mill changes: what it grinds next is decided
+at the start of the day from whatever is in its input chest, which the grabber never touches. Putting
+wheat *in* is still your job.
+
+Rows come from `Data/Buildings`, so a building a content pack adds is listed the day you install it,
+as long as its data says where the finished goods end up. A chest the building takes its inputs from is
+never emptied, for the obvious reason.
+
+One deliberate omission:
+
+- **Junimo huts aren't collectable.** A hut's chest is the junimos' own drop-off and plenty of people
+  keep things in it, which makes it storage rather than an output hopper. Emptying it would be taking
+  from a chest you fill.
+
+A full grabber leaves a building alone rather than dropping what doesn't fit on the ground: the goods
+stay in the hopper, or in the pond, until there's room.
 
 ### Animal products
 

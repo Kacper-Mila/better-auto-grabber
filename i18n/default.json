@@ -14,6 +14,7 @@
     "target.coal-node": "Coal Node",
     "target.slime-ball": "Slime Ball",
     "target.trash-can": "Trash Can",
+    "target.fish-pond": "Fish Pond",
 
     "location.BugLand": "Mutant Bug Lair",
     "location.WitchSwamp": "Witch's Swamp",
@@ -64,6 +65,7 @@
     "group.trash-cans": "Trash Cans",
     "group.animals": "Animals",
     "group.machines": "Machines",
+    "group.buildings": "Buildings",
 
     "menu.title": "Auto-Grabber",
     "menu.tab.targets": "What to grab",

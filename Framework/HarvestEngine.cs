@@ -5,7 +5,9 @@ using System.Linq;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.Buildings;
 using StardewValley.Extensions;
+using StardewValley.GameData.Buildings;
 using StardewValley.GameData.FarmAnimals;
 using StardewValley.GameData.Machines;
 using StardewValley.Objects;
@@ -85,6 +87,7 @@ internal sealed class HarvestEngine
                 this.SweepMoss(location, settings, output);
                 this.SweepTrashCans(location, settings, output);
                 this.SweepMachines(location, settings, output);
+                this.SweepBuildings(location, settings, output);
             }
             catch (Exception ex)
             {
@@ -1163,6 +1166,137 @@ internal sealed class HarvestEngine
 
         if (this.Config.GrantExperience)
             Game1.player.gainExperience(1, 5);
+    }
+
+    /*********
+    ** Buildings
+    *********/
+    /// <summary>Take the finished goods waiting in the location's buildings.</summary>
+    /// <remarks>
+    ///   None of the other passes has ever seen a building. A <see cref="Building" /> isn't an object on
+    ///   the map, so nothing stands for one in <see cref="GameLocation.objects" /> to be swept -- which is
+    ///   why a mill and a fish pond were uncollectable however the grabber was set up.
+    ///
+    ///   A building under construction is left alone: it has its chests already, but nothing has been
+    ///   made in them and walking up to one does nothing.
+    /// </remarks>
+    private void SweepBuildings(GameLocation location, GrabberSettings settings, GrabberOutput output)
+    {
+        foreach (Building building in location.buildings)
+        {
+            if (output.IsFull)
+                return;
+
+            if (building.daysOfConstructionLeft.Value > 0)
+                continue;
+
+            if (building is FishPond pond)
+                this.HarvestFishPond(pond, settings, output);
+            else
+                this.HarvestBuildingChests(building, settings, output);
+        }
+    }
+
+    /// <summary>Take the produce waiting in a fish pond.</summary>
+    /// <remarks>
+    ///   A pond holds its produce in a field of its own rather than in a chest, so it's collected on its
+    ///   own terms: take the item, clear the field, credit the experience, which is all
+    ///   <c>FishPond.doAction</c> does.
+    ///
+    ///   Only the output is touched. A pond asking for an item to raise its population goes on asking:
+    ///   handing over five cinder shards costs the player something, and a grabber shouldn't spend it.
+    /// </remarks>
+    private void HarvestFishPond(FishPond pond, GrabberSettings settings, GrabberOutput output)
+    {
+        if (!settings.Wants(TargetCatalog.FishPondId))
+            return;
+
+        Item? produce = pond.output.Value;
+        if (produce == null)
+        {
+            this.ReportNothingReady(TargetCatalog.FishPondId, settings, output);
+            return;
+        }
+
+        // Read before the item is handed over: depositing it merges it into a stack in the chest, which
+        // leaves the instance with nothing left to price.
+        int experience = produce is Object obj
+            ? (int)(obj.sellToStorePrice() * FishPond.HARVEST_OUTPUT_EXP_MULTIPLIER) + FishPond.HARVEST_BASE_EXP
+            : FishPond.HARVEST_BASE_EXP;
+
+        // Whatever doesn't fit stays in the pond. A pond is five tiles of water the player can't walk
+        // onto, so anything dropped there would be out of reach for good.
+        Item? leftover = output.TryDeposit(produce);
+        pond.output.Value = leftover;
+
+        // the same fishing experience FishPond.doAction gives for collecting it by hand, and on the same
+        // terms: vanilla pays only when the whole item was taken
+        if (this.Config.GrantExperience && leftover == null)
+            Game1.player.gainExperience(1, experience);
+    }
+
+    /// <summary>Empty a building's output chests, like the mill's flour hopper.</summary>
+    /// <remarks>
+    ///   Collecting one of these is as plain as it looks: <c>Building.PerformBuildingChestAction</c> hands
+    ///   a collect chest straight to the player with no stats, no experience and nothing recalculated, so
+    ///   moving the items across is the whole of it. What the building makes next is the conversion's
+    ///   business, and that runs on its own at the start of the day.
+    /// </remarks>
+    private void HarvestBuildingChests(Building building, GrabberSettings settings, GrabberOutput output)
+    {
+        BuildingData? data = building.GetData();
+        if (data == null || !TargetCatalog.IsCollectable(building.buildingType.Value, data))
+            return;
+
+        string targetId = TargetCatalog.BuildingId(building.buildingType.Value);
+        if (!settings.Wants(targetId))
+            return;
+
+        bool foundAnything = false;
+        foreach (BuildingChest chestData in TargetCatalog.CollectChests(data))
+        {
+            Chest? chest = building.GetBuildingChest(chestData.Id);
+            if (chest == null)
+                continue;
+
+            foreach (Item? item in chest.Items.ToArray())
+            {
+                if (output.IsFull)
+                    return;
+
+                if (item == null)
+                    continue;
+
+                foundAnything = true;
+
+                // Whatever doesn't fit stays in the hopper rather than being dropped in front of a
+                // building nobody is standing at.
+                Item? leftover = output.TryDeposit(item);
+                if (leftover != null)
+                {
+                    chest.Items[chest.Items.IndexOf(item)] = leftover;
+                    return;
+                }
+
+                chest.Items.Remove(item);
+            }
+
+            chest.clearNulls();
+        }
+
+        if (!foundAnything)
+            this.ReportNothingReady(targetId, settings, output);
+    }
+
+    /// <summary>Note that a building had nothing waiting, if the player asked for that building by name.</summary>
+    /// <remarks>
+    ///   Under the group's wildcard this would otherwise report every mill and every pond on the farm on
+    ///   every pass, which is noise rather than an answer to "why didn't my grabber empty that".
+    /// </remarks>
+    private void ReportNothingReady(string targetId, GrabberSettings settings, GrabberOutput output)
+    {
+        if (settings.IsExplicit(targetId))
+            output.Report.Skip($"{TargetCatalog.Get(targetId)?.DisplayName ?? targetId}: nothing ready to collect");
     }
 
     /// <summary>Grant the skill experience a machine gives when its output is collected.</summary>

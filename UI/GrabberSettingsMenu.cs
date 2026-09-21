@@ -804,6 +804,7 @@ internal sealed class GrabberSettingsMenu : IClickableMenu
             TargetGroup.Trees => I18n.Group_Trees(),
             TargetGroup.TrashCans => I18n.Group_TrashCans(),
             TargetGroup.Animals => I18n.Group_Animals(),
+            TargetGroup.Buildings => I18n.Group_Buildings(),
             _ => I18n.Group_Machines()
         };
     }

@@ -13,7 +13,8 @@ internal enum TargetGroup
     Trees,
     TrashCans,
     Animals,
-    Machines
+    Machines,
+    Buildings
 }
 
 /// <summary>One selectable row on a grabber's target list.</summary>

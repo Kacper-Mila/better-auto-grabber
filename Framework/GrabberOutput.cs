@@ -44,19 +44,32 @@ internal sealed class GrabberOutput
     /// <param name="tile">The tile it was harvested from.</param>
     public void Deposit(Item? item, GameLocation location, Vector2 tile)
     {
-        if (item == null)
-            return;
-
-        Item? leftover = this.Chest.addItem(item);
-        this.Report.Add(item.DisplayName, item.Stack - (leftover?.Stack ?? 0));
-
         // A single harvest can yield several stacks (a meteorite gives ore, stone and geodes at once),
         // so the last slot can fill partway through. Anything that doesn't fit is dropped on the tile
         // it came from rather than deleted.
+        Item? leftover = this.TryDeposit(item);
         if (leftover != null)
         {
-            this.Report.Skip($"{item.DisplayName} dropped on the ground (grabber full)");
+            this.Report.Skip($"{leftover.DisplayName} dropped on the ground (grabber full)");
             Game1.createItemDebris(leftover, tile * 64f, -1, location);
         }
+    }
+
+    /// <summary>Put a harvested item in the chest and hand back whatever didn't fit.</summary>
+    /// <param name="item">The harvested item.</param>
+    /// <returns>The part of the stack the chest had no room for, or <c>null</c> if all of it fit.</returns>
+    /// <remarks>
+    ///   For anything taken out of a container of its own -- a mill's hopper, a fish pond -- this is what
+    ///   <see cref="Deposit" /> should not be: what doesn't fit belongs back where it was, not on the
+    ///   ground in front of a building nobody is standing at.
+    /// </remarks>
+    public Item? TryDeposit(Item? item)
+    {
+        if (item == null)
+            return null;
+
+        Item? leftover = this.Chest.addItem(item);
+        this.Report.Add(item.DisplayName, item.Stack - (leftover?.Stack ?? 0));
+        return leftover;
     }
 }

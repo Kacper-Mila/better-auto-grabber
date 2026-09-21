@@ -47,6 +47,7 @@ internal static class I18n
     public static string Target_CoalNode() => I18n.Get("target.coal-node");
     public static string Target_SlimeBall() => I18n.Get("target.slime-ball");
     public static string Target_TrashCan() => I18n.Get("target.trash-can");
+    public static string Target_FishPond() => I18n.Get("target.fish-pond");
 
     public static string Group_Forage() => I18n.Get("group.forage");
     public static string Group_Crops() => I18n.Get("group.crops");
@@ -59,6 +60,7 @@ internal static class I18n
     public static string Group_TrashCans() => I18n.Get("group.trash-cans");
     public static string Group_Animals() => I18n.Get("group.animals");
     public static string Group_Machines() => I18n.Get("group.machines");
+    public static string Group_Buildings() => I18n.Get("group.buildings");
 
     public static string Menu_Title() => I18n.Get("menu.title");
     public static string Menu_TabTargets() => I18n.Get("menu.tab.targets");
